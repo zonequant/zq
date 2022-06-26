@@ -105,6 +105,11 @@ class Binance(BaseBroker):
                 "method": "GET",
                 "auth": False
             },
+            FEE:{
+                "path": "/sapi/v1/asset/tradeFee",
+                "method": "GET",
+                "auth": True
+            },
             BALANCE: {
                 "path": "/api/v3/account",
                 "method": "GET",
@@ -492,6 +497,12 @@ class Binance(BaseBroker):
         request.headers = header
         return request
 
+    def get_fees(self,symbol=None):
+        p = {"timestamp": get_cur_timestamp_ms()}
+        if symbol:
+            p["symbol"] = symbol
+        return self.fetch(FEE,p)
+
     def get_balance(self, symbol=None):
         p = {"timestamp": get_cur_timestamp_ms()}
         data = self.fetch(BALANCE, p)
@@ -658,6 +669,7 @@ class Binance(BaseBroker):
     def get_ticker(self, symbol):
         p = {"symbol": symbol}
         return self.fetch(TICKER, p)
+
 
     def parse_ticker(self, data):
         tick = Ticker()

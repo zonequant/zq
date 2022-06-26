@@ -4,10 +4,7 @@
 @Author : domionlu@zquant.io
 @File : strategy
 """
-# -*- coding:utf-8 -*-
 import abc
-import numpy as np
-from typing import Callable
 
 
 class Strategy(metaclass=abc.ABCMeta):
@@ -30,20 +27,6 @@ class Strategy(metaclass=abc.ABCMeta):
 
     def prep(self):
         pass
-
-    def I(self, func: Callable, *args) -> np.ndarray:
-        """
-        计算买卖指标向量。买卖指标向量是一个数组，长度和历史数据对应；
-        用于判定这个时间点上需要进行"买"还是"卖"。
-        例如计算滑动平均：
-        def init():
-            self.sma = self.I(utils.SMA, self.data.Close, N)
-        """
-        value = func(*args)
-        value = np.asarray(value)
-
-        self._indicators.append(value)
-        return value
 
     @property
     def tick(self):

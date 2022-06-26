@@ -11,7 +11,6 @@ from abc import abstractmethod
 from collections import defaultdict
 from queue import Empty, Queue
 from threading import Thread
-from time import sleep
 from typing import Any, Callable, List
 
 class EventManger(object):
@@ -24,6 +23,7 @@ class EventManger(object):
     def get_instance():
         if EventManger.instance is None:
             EventManger.instance = EventEngine()
+            EventManger.instance.start()
         return EventManger.instance
 
 
@@ -112,10 +112,8 @@ if __name__ == '__main__':
 
         def simpletest(event):
             print('处理每秒触发的计时器事件：%s' % str(datetime.now()))
-
         ee = EventManger.get_instance()
         # ee.register(EVENT_TIMER, simpletest)
-        ee.start()
         ee.register("event", simpletest)
 
         for i in range(100):

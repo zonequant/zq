@@ -4,7 +4,6 @@
 @Author : domionlu@zquant.io
 @File : basetrade
 """
-# -*- coding:utf-8 -*-
 from zq.engine.restclient import RestClient
 from zq.common.const import *
 from abc import abstractmethod
@@ -19,7 +18,7 @@ class BaseBroker(RestClient):
     orders = {}
     assets = {}
     symbols={}
-    datas=Dataset()
+    datas=None
 
     def __init__(self, api_key=None, api_secret=None, market_type=SPOT):
         super().__init__()
@@ -43,6 +42,9 @@ class BaseBroker(RestClient):
         e = Event(POSITION, data)
         self.event.put(e)
 
+    def set_dataset(self,dataset):
+        self.datas=dataset
+
     def data_feed(self,symbol, interval=INTERVAL_DAY):
         """
         if symbol=ALL,则进行全市场的订阅
@@ -52,6 +54,8 @@ class BaseBroker(RestClient):
         """
         if symbol=="ALL":
             symbol=self.symbols.keys()
+        if self.datas is None:
+            self.datas=Dataset()
         self.datas.interval=interval
         if isinstance(symbol,list):
             for s in symbol:
@@ -63,11 +67,9 @@ class BaseBroker(RestClient):
             self.datas.add(BarSeries(data,interval=interval),symbol)
             self.market.add_feed({BAR: self.on_bar, TICKER: self.on_ticker},symbol=symbol,interval=interval)
 
-
     def on_bar(self,data):
         symbol=data.symbol
         self.datas[symbol].update_bar(data)
-
 
     def on_ticker(self, data):
         """
@@ -76,7 +78,6 @@ class BaseBroker(RestClient):
         """
         e = Event(TICKER, data)
         self.event.put(e)
-
 
     def sell(self, symbol, volume, price=None, order_type=LIMIT):
         o = Order()
@@ -107,8 +108,6 @@ class BaseBroker(RestClient):
         """
         todo 检查订单的价格限制 ，数量限制
         """
-
-
 
     @abstractmethod
     def get_exchange(self):

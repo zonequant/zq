@@ -13,21 +13,23 @@ from zq.engine.timeseries import  Dataset
 from zq.model import Position,Order
 from zq.common.const import *
 from zq.backtest.risk import  Risk
+from zq.broker.brokerManger import BrokerManger
+from zq.engine.baseBroke import BaseBroker
 
-
-class BackBroker:
+class BackBroker(BaseBroker):
     open: float
     high: float
     low: float
     close: float
 
-    def __init__(self, data, cash=100000, commission=0.001, lot=1,out=False):
+    def __init__(self, data, cash=100000, commission=0.001, lot=1, out=False):
         """
         :param data:
         :param cash:
         :param commission:
         :param lot:
         """
+        super().__init__()
         self._inital_cash = cash
         self._data = data
         self._commission = commission
@@ -280,8 +282,8 @@ class BackEngine:
 
         data = data.copy(False)
         # 利用数据，初始化交易所对象和策略对象。
-        self._data = self._check_data(data)
-        self._broker = broker(data=self._data, cash=cash, commission=commission,lot=lot,out=out)
+        self._datas = self._check_data(data)
+        self._broker =BrokerManger(self._datas).add_broker(broker(data=self._datas, cash=cash, commission=commission,lot=lot,out=out))
         self._strategy_cls = strategy
         self._results = None
         self._strategy = None
@@ -298,18 +300,18 @@ class BackEngine:
         """
         broker = self._broker
         log.info(f"初始化策略{self._strategy_cls.__name__}")
-        strategy = self._strategy_cls(broker, self._data, **kwargs)
+        strategy = self._strategy_cls(self,**kwargs)
 
         # 提前计算策略中的指标
         strategy.init()
-
+        strategy.to_timeseries()
         start = 30
-        total_size = self._data.size()
+        total_size = self._datas.size()
         log.info(f"回测数据量 {total_size+1}")
         for i in range(1, total_size):
             broker.next(i)
             if i >= start:
-                strategy.next(i)
+                strategy.next()
             broker.match()
             # progress_bar(i/total_size)
         log.info(f"完成回测")
@@ -361,6 +363,11 @@ class BackEngine:
 
         return result
 
+    @property
+    def datas(self):
+        return self._datas
 
-
+    @property
+    def brokers(self):
+        return self._broker
 

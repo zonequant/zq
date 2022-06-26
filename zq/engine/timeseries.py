@@ -20,6 +20,7 @@ class Dataset(object):
     """
     _data={}   # TimeSeries时序数组
     _keys=[]
+    instance = None
 
     def add(self,data,name=None):
         if name is None:
@@ -82,6 +83,7 @@ class TimeSeries():
             self._data = data
             self._columns = data.dtype.names
             self.datetime_col = self._columns[0]
+        # todo bug AttributeError: 'NoneType' object has no attribute 'shape'
         self.size = self._data.shape[0] - 1
         self._i = self.size
 

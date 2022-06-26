@@ -7,4 +7,4 @@
 """
 from zq.broker.binance import Binance,Binance_Market,Binance_Trade
 from zq.broker.ftx import Ftx,Ftx_Trade,Ftx_Market
-from zq.broker.okex import Okex
+from zq.broker.okex import Okex,Okex_Market,Okex_Trade
