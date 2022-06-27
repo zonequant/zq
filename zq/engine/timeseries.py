@@ -63,6 +63,7 @@ class TimeSeries():
     _i = 0  # 当前数组的内部索引
     datetime_col="datetime"
     _name=""
+    step_size=10000
     def __init__(self, data, step_size=100000):
         """
         基于numpy管理时序数据
@@ -83,8 +84,10 @@ class TimeSeries():
             self._data = data
             self._columns = data.dtype.names
             self.datetime_col = self._columns[0]
-        # todo bug AttributeError: 'NoneType' object has no attribute 'shape'
-        self.size = self._data.shape[0] - 1
+        else:
+            print(type(data))
+            print(data)
+        self.size = len(self._data)- 1
         self._i = self.size
 
     @property

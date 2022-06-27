@@ -6,3 +6,4 @@
 """
 # -*- coding:utf-8 -*-
 name="zquant"
+__version="0.1.0"
