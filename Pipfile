@@ -6,6 +6,15 @@ name = "pypi"
 [packages]
 click = "*"
 dynaconf = "*"
+pandas = "*"
+requests = "*"
+aiohttp = "*"
+pika = "*"
+statsmodels = "*"
+ta-lib = "*"
+empyrical = "*"
+redis = "*"
+numba = "*"
 
 [dev-packages]
 

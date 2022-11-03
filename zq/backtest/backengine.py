@@ -22,7 +22,7 @@ class BackBroker(BaseBroker):
     low: float
     close: float
 
-    def __init__(self, data, cash=100000, commission=0.001, lot=1, out=False):
+    def __init__(self, cash=100000, commission=0.001, lot=1, out=False):
         """
         :param data:
         :param cash:
@@ -31,7 +31,6 @@ class BackBroker(BaseBroker):
         """
         super().__init__()
         self._inital_cash = cash
-        self._data = data
         self._commission = commission
         self._position = {} #持仓状态{symbol:qty}
         self._lot = lot
@@ -40,10 +39,7 @@ class BackBroker(BaseBroker):
         self._retuns = list()
         self._fees=0.00
         self._t = 0
-        self.symbol=data.symbols[0]
         self.out=out
-        self.datetime=self._data.datetime
-
 
     def log(self,msg):
         if self.out:
@@ -74,13 +70,17 @@ class BackBroker(BaseBroker):
         """
         return self._inital_cash
 
+    def set_dataset(self,dataset):
+        self._datas=dataset
+        self.symbol=dataset.symbols[0]
+
 
     def get_value(self,price,openprice,qty):
         cash=abs(openprice+qty)
         cash=cash+(price-openprice)*qty
         return cash
 
-    def buy(self, **kwargs):
+    def buy(self, *args,**kwargs):
         """
         用当前账户剩余资金，按照市场价格全部买入
         当可用余额不足时，订单数量修改为最小单位，或最小单位无法满足时，订单将被撤销
@@ -89,7 +89,7 @@ class BackBroker(BaseBroker):
         """
         price = kwargs.get("price", None)
         symbol=kwargs.get("symbol",self.symbol)
-        close=self._data[symbol].close[self._t]
+        close=self._datas[symbol].close[-1]
         position=self.positions(symbol)
         if price is None:
             price = close#
@@ -97,7 +97,7 @@ class BackBroker(BaseBroker):
         if qty is None:
             qty = self._lot
         o = Order()
-        o.time = self._data[symbol].datetime[self._t]
+        o.time =self._time
         o.symbol = symbol
         o.price = price
         o.qty = qty
@@ -120,13 +120,13 @@ class BackBroker(BaseBroker):
             else:
                 self.log(f"{self._time}-open buy:余额不足 call:{self._cash},qty:{qty},price:{price}")
 
-    def sell(self, **kwargs):
+    def sell(self, *args, **kwargs):
         """
         卖出当前账户剩余持仓
         """
         price = kwargs.get("price", None)
         symbol = kwargs.get("symbol", self.symbol)
-        close = self._data[symbol].close[self._t]
+        close = self._datas[symbol].close[-1]
         position = self.positions(symbol)
         if price is None:
             price = close
@@ -135,7 +135,7 @@ class BackBroker(BaseBroker):
         if qty is None:
             qty = self._lot
         o = Order()
-        o.time = self.datetime[self._t]
+        o.time = self._time
         o.symbol = symbol
         o.price = price
         o.qty = qty
@@ -157,9 +157,9 @@ class BackBroker(BaseBroker):
             else:
                 self.log(f"{self._time}-open sell:余额不足 call:{self._cash},qty:{qty},price:{price}")
 
-    def next(self, t):
-        self._t = t
-        self._time=self.datetime[self._t]
+    def next(self):
+        self._datas.next()
+        self._time=self._datas.datetime[-1]
         self.match()
         self._retuns.append(self.market_value())
 
@@ -174,8 +174,8 @@ class BackBroker(BaseBroker):
         for i in self._orders:
             symbol=i.symbol
             position = self.positions(symbol)
-            low=self._data[symbol].low[self._t]
-            high = self._data[symbol].high[self._t]
+            low=self._datas[symbol].low[-1]
+            high = self._datas[symbol].high[-1]
             side = i.side
             qty=i.qty
             price=i.price
@@ -238,7 +238,7 @@ class BackBroker(BaseBroker):
         """
         pnl=0
         for symbol,posistion in self._position.items():
-            price=self._data[posistion.symbol].close[self._t]
+            price=self._datas[posistion.symbol].close[-1]
             pnl=pnl+(price-posistion.price)*posistion.qty+posistion.price*abs(posistion.qty)
         return pnl
 
@@ -283,7 +283,8 @@ class BackEngine:
         data = data.copy(False)
         # 利用数据，初始化交易所对象和策略对象。
         self._datas = self._check_data(data)
-        self._broker =BrokerManger(self._datas).add_broker(broker(data=self._datas, cash=cash, commission=commission,lot=lot,out=out))
+        self._broker =broker(cash=cash, commission=commission,lot=lot,out=out)
+        self._broker.set_dataset(self._datas)
         self._strategy_cls = strategy
         self._results = None
         self._strategy = None
@@ -309,7 +310,7 @@ class BackEngine:
         total_size = self._datas.size()
         log.info(f"回测数据量 {total_size+1}")
         for i in range(1, total_size):
-            broker.next(i)
+            broker.next()
             if i >= start:
                 strategy.next()
             broker.match()

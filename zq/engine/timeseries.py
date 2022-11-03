@@ -21,6 +21,7 @@ class Dataset(object):
     _data={}   # TimeSeries时序数组
     _keys=[]
     instance = None
+    _i=0
 
     def add(self,data,name=None):
         if name is None:
@@ -33,6 +34,7 @@ class Dataset(object):
             setattr(self,name,data)
         else:
             raise Exception(f"无效的数据类型{type(data)}") # 只支持DataFrame,Timeseries
+
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -48,7 +50,14 @@ class Dataset(object):
         :return:
         """
         data = self._data[self._keys[0]]
-        return getattr(data, item)
+        data=getattr(data, item)
+        return data[:self._i]
+
+    def next(self):
+        self._i+=1
+        for k,v in self._data.items():
+            v.set_index(self._i)
+
 
     @property
     def symbols(self):
@@ -64,6 +73,7 @@ class TimeSeries():
     datetime_col="datetime"
     _name=""
     step_size=10000
+
     def __init__(self, data, step_size=100000):
         """
         基于numpy管理时序数据
@@ -82,17 +92,26 @@ class TimeSeries():
             self.datetime_col = self._columns[0]
         elif isinstance(data, np.ndarray):
             self._data = data
-            self._columns = data.dtype.names
-            self.datetime_col = self._columns[0]
+            if data.dtype.names is not None:
+                self._columns = data.dtype.names
+                self.datetime_col = self._columns[0]
         else:
             print(type(data))
             print(data)
         self.size = len(self._data)- 1
         self._i = self.size
+        self.set_attr()
 
-    @property
-    def datetime(self):
-        return self._data[self.datetime_col][:self._i]
+    def set_attr(self):
+        if self._columns:
+            for i in self._columns:
+                setattr(self,i,self._data[i])
+
+    # @property
+    # def datetime(self):
+    #     return self._data[self.datetime_col][:self._i]
+    def set_index(self,i):
+        self._i=i
 
     def __array__(self):
         """
@@ -101,16 +120,16 @@ class TimeSeries():
         """
         return self._data
 
-    def __getattr__(self, item):
-        """
-        使用 data.close访问数据
-        :param item:
-        :return:
-        """
-        if item in self._columns:
-            return self._data[item][:self._i]
-        else:
-            return getattr(self, item)
+    # def __getattr__(self, item):
+    #     """
+    #     使用 data.close访问数据
+    #     :param item:
+    #     :return:
+    #     """
+    #     if item in self._columns:
+    #         return self._data[item][:self._i]
+    #     # else:
+    #         # return getattr(self, item)
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -119,20 +138,20 @@ class TimeSeries():
             return self._data[key]
         elif isinstance(key, slice):
             # todo 在内存索引中使用切片
-            return self.__class__(self._list[key])
+            return self.__class__(self._data[key])
         elif key in self._columns:
             return self._data[key][:self._i]
         else:
             raise ValueError(f"{key} is not in columns.")
 
-    def index(self,key):
-        if isinstance(key, int):
-            if key < 0:
-                key = self._i + key + 1
-            return self._data[key]
-        elif isinstance(key, slice):
-            # todo 在内存索引中使用切片
-            return self.__class__(self._list[key])
+    # def index(self,key):
+    #     if isinstance(key, int):
+    #         if key < 0:
+    #             key = self._i + key + 1
+    #         return self._data[key]
+    #     elif isinstance(key, slice):
+    #         # todo 在内存索引中使用切片
+    #         return self.__class__(self._list[key])
 
     def last(self):
         return self._data[self._i]

@@ -96,7 +96,13 @@ class BaseStrategy(metaclass=abc.ABCMeta):
         return self._datas
 
     def to_timeseries(self):
+        li=[]
         for i in dir(self):
-            at=getattr(self,i)
-            if isinstance(at,np.ndarray):
-                setattr(self,i,TimeSeries(i))
+            if "__" not in i:
+                at=getattr(self,i)
+                if isinstance(at,np.ndarray):
+                    li.append([i,at])
+        for [k,v] in li:
+            v=TimeSeries(v)
+            setattr(self,k,v)
+            self._datas.add(v,name=k)

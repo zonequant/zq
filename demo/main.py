@@ -8,3 +8,8 @@
 from zq.engine.baseStrategy import BaseStrategy
 from zq.indicator.common import *
 
+
+from zq.engine.tqueue import Worker
+url="redis://default:redispw@localhost:55000"
+worker=Worker(url)
+worker.start()

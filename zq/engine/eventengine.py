@@ -79,7 +79,7 @@ class EventEngine(BaseEngine):
     def start(self) -> None:
         if self._active==False:
             self._active = True
-            self._thread.start()
+        self._thread.start()
 
     def stop(self) -> None:
         """

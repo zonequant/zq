@@ -9,8 +9,6 @@ from zq.indicator.common import *
 from zq.backtest.backengine import BackEngine,BackBroker
 import pandas as pd
 
-
-
 class Doublema(BaseStrategy):
     params = {
         "fast": 30,
@@ -23,14 +21,12 @@ class Doublema(BaseStrategy):
         self.sma2 = Ema(close, self.p.slow)
 
     def next(self):
-        sma1 = self.sma1[-1]
-        sma2 = self.sma2[-1]
         # 如果此时快线刚好越过慢线，买入全部
-        if crossover(sma1, sma2):
+        if crossover(self.sma1, self.sma2):
             self.buy()
 
         # 如果是慢线刚好越过快线，卖出全部
-        elif crossunder(sma1, sma2):
+        elif crossunder(self.sma1, self.sma2):
             self.sell()
 
         # 否则，这个时刻不执行任何操作。
