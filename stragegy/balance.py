@@ -88,7 +88,7 @@ class Rebalancing(BaseStrategy):
             for index, row in self.portfolio.iterrows():
                 if row["target"] > 0 and abs((row["target"] - row["amount"]) / row["target"]) > self.p.spread:
                     self.target_to(row["asset"] + self.p.baseasset, row["delta"],row["price"])
-            print_end(f"当前总市值: {round(amount,2)}")
+            # print_end(f"当前总市值: {round(amount,2)}")
         except:
             log.error(traceback.format_exc())
 
