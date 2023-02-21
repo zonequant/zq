@@ -47,17 +47,26 @@ class Rebalancing(BaseStrategy):
         self.rebalance()
 
     def target_to(self, symbol, volume):
-        try:
-            if volume > 0:
-                order = self.buy(symbol, volume)
-                log.info(f"买入 {symbol}:{volume}--{order.status}")
-            else:
-                order = self.sell(symbol, volume)
-                log.info(f"卖出 {symbol}:{volume}--{order.status}")
-            amount = self.get_amount()
-            log.info(f"当前总市值: {round(amount,2)}")
-        except:
-            log.error(traceback.format_exc())
+        if self.status:
+            self.status=False
+            try:
+                if volume > 0:
+                    order = self.buy(symbol, volume)
+                    if order.status==STATUS_FILLED:
+                        log.info(f"买入 {symbol}:{volume}--{order.status}")
+                    else:
+                        log.warning(f"{order.msg}")
+                else:
+                    order = self.sell(symbol, volume)
+                    if order.status == STATUS_FILLED:
+                        log.info(f"卖出 {symbol}:{volume}--{order.status}")
+                    else:
+                        log.warning(f"卖出 {symbol}:{volume}-{order.err_msg}")
+                amount = self.get_amount()
+                log.info(f"当前总市值: {round(amount,2)}")
+            except:
+                log.error(traceback.format_exc())
+            self.status=True
 
     def rebalance(self):
         try:

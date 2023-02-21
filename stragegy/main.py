@@ -8,11 +8,14 @@ from zq.engine.botEngine import BotEngine
 from stragegy.balance import Rebalancing
 from zq.broker.binance import Binance
 from zq.config import settings
+from zq.common.tools import *
 
 if __name__ == '__main__':
     bot = BotEngine()
-    param = {"assets": {"asset": ["BTC", "ETH"], "weights": [0.5, 0.5]}, "baseasset": "USDT","spread":0.02}
+    param=read_json("config.json")
     bot.add_strategy(Rebalancing, param)
-    bn=Binance(api_key="QDxTJVdUACC1PpLaR2AdUIEKLh1tT0LofLrPWiGXrVHvtbz5EMSl0j28QNv6RDRY",api_secret="psh5oR8IW1JR57B6eZbXgOu4B8oZKBDqyujR4VzzS3sh03hYM5wpwYBDRZycFBGM")
+    bn = Binance(api_key=settings.API_KEY,api_secret=settings.API_SECRET)
     bot.add_broker(bn)
     bot.run()
+
+
