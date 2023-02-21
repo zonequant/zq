@@ -13,8 +13,10 @@ import time
 import sys
 import decimal
 import datetime
+import json
 from functools import wraps
 from time import time as timestamp
+
 
 def get_cur_timestamp():
     """ 获取当前时间戳
@@ -101,8 +103,9 @@ def ts_to_datetime_str_ms(ts=None, fmt='%Y-%m-%d %H:%M:%S,%f'):
     if not ts:
         ts = get_cur_timestamp()
 
-    dt = datetime.datetime.fromtimestamp(ts/1000)
+    dt = datetime.datetime.fromtimestamp(ts / 1000)
     return dt.strftime(fmt)
+
 
 def ts_to_datetime_str(ts=None, fmt='%Y-%m-%d %H:%M:%S'):
     """ 将时间戳转换为日期时间格式，年-月-日 时:分:秒
@@ -111,7 +114,7 @@ def ts_to_datetime_str(ts=None, fmt='%Y-%m-%d %H:%M:%S'):
     """
     if not ts:
         ts = get_cur_timestamp()
-    dt = datetime.datetime.fromtimestamp(ts/1000)
+    dt = datetime.datetime.fromtimestamp(ts / 1000)
     return dt.strftime(fmt)
 
 
@@ -214,53 +217,66 @@ def time_cost(func):
         result = func(*args, **kwargs)
         t1 = time.time()
         spend = t1 - t0
-        print("运行耗时%.4f ms：函数%s" % (spend*1000, func.__name__))
+        print("运行耗时%.4f ms：函数%s" % (spend * 1000, func.__name__))
         return result
+
     return f
 
 
 def singleton(cls, *args, **kwargs):
     instances = {}
+
     def _singleton():
         if cls not in instances:
             instances[cls] = cls(*args, **kwargs)
         return instances[cls]
+
     return _singleton
 
+
 class DictObj(object):
-    def __init__(self,map):
+    def __init__(self, map):
 
         self.map = map
+
     def __setattr__(self, name, value):
         if name == 'map':
-             object.__setattr__(self, name, value)
-             return;
+            object.__setattr__(self, name, value)
+            return;
         self.map[name] = value
 
-    def __getattr__(self,name):
+    def __getattr__(self, name):
         v = self.map[name]
-        if isinstance(v,dict):
+        if isinstance(v, dict):
             return DictObj(v)
         if isinstance(v, dict):
             r = []
             for i in v:
-                if isinstance(i,dict):
+                if isinstance(i, dict):
                     r.append(DictObj(i))
                 r.append(i)
             return r
         else:
             return self.map[name];
 
-    def __getitem__(self,name):
+    def __getitem__(self, name):
         return self.map[name]
 
 
 # def process_bar(percent, start_str='', end_str='', total_length=0):
 def progress_bar(percent):
     _output = sys.stdout
-    _output.write(f'\rcomplete percent:{percent*100:.0f}%')
+    _output.write(f'\rcomplete percent:{percent * 100:.0f}%')
     _output.flush()
+
 
 def print_end(msg):
     sys.stdout.flush()  # 立即刷新缓冲区
     sys.stdout.write(f"\r{msg}")
+
+
+def read_json(file):
+    with open(file) as f:
+        json_string = f.read()
+    data = json.loads(json_string)
+    return data
