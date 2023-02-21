@@ -4,6 +4,7 @@
 # @Author  : Dominolu
 # @File    : balance.py
 # @Software: PyCharm
+import time
 import traceback
 
 import pandas as pd
@@ -28,10 +29,11 @@ class Rebalancing(BaseStrategy):
         self.portfolio["price"] = 0
         self.portfolio["balance"] = 0
         amount = self.get_amount()
-        log.info(self.params)
+
         log.info(f"当前总市值: {round(amount,4)}")
         for k, v in self.symbols.items():
             self._broker.market.add_feed({TICKER: self.on_ticker}, symbol=k)
+        self.status=True
 
     def on_ticker(self, tick):
         asset = self.symbols[tick.symbol]
@@ -39,25 +41,33 @@ class Rebalancing(BaseStrategy):
         self.rebalance()
 
     def on_account(self, data):
-        account = data.get("ACCOUNT")
-        for i in self.assets:
-            balance = account[i].balance
-            self.portfolio.loc[self.portfolio["asset"] == i, ['balance']] = balance
-        self.baseasset_value = account[self.p.baseasset].balance
-        self.rebalance()
+        for k,v in data.items():
+            if k==self.p.baseasset:
+                self.baseasset_value=v.free
+            else:
+                if k in self.assets:
+                    balance = v.balance
+                    self.portfolio.loc[self.portfolio["asset"] == k, ['balance']] = balance
 
-    def target_to(self, symbol, volume):
+    def target_to(self, symbol, volume,price):
         if self.status:
             self.status=False
             try:
                 if volume > 0:
-                    order = self.buy(symbol, volume)
+                    volume=volume*0.996
+                    order = self.buy(symbol, volume,price)
                     if order.status==STATUS_FILLED:
                         log.info(f"买入 {symbol}:{volume}--{order.status}")
-                    else:
-                        log.warning(f"{order.msg}")
+                    elif order.status in (STATUS_NEW,STATUS_PARTIALLY_FILLED):
+                        time.sleep(0.1)
+                        order=self._broker.cancel_order(order)
+                        if order:
+                            log.info(f"买入订单 {symbol}:{volume}--{order.status}")
+                        else:
+                            log.info(f"买入 {symbol}:{volume}--{STATUS_FILLED}")
+
                 else:
-                    order = self.sell(symbol, volume)
+                    order = self.sell(symbol, abs(volume))
                     if order.status == STATUS_FILLED:
                         log.info(f"卖出 {symbol}:{volume}--{order.status}")
                     else:
@@ -77,7 +87,7 @@ class Rebalancing(BaseStrategy):
             self.portfolio = self.portfolio.sort_values(by="delta")
             for index, row in self.portfolio.iterrows():
                 if row["target"] > 0 and abs((row["target"] - row["amount"]) / row["target"]) > self.p.spread:
-                    self.target_to(row["asset"] + self.p.baseasset, row["delta"])
+                    self.target_to(row["asset"] + self.p.baseasset, row["delta"],row["price"])
             print_end(f"当前总市值: {round(amount,2)}")
         except:
             log.error(traceback.format_exc())

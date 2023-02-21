@@ -12,6 +12,7 @@ from collections import defaultdict
 from queue import Empty, Queue
 from threading import Thread
 from typing import Any, Callable, List
+from loguru import logger as log
 
 class EventManger(object):
     instance = None
@@ -80,6 +81,8 @@ class EventEngine(BaseEngine):
         if self._active==False:
             self._active = True
         self._thread.start()
+        log.info("事件引擎已启动")
+
 
     def stop(self) -> None:
         """

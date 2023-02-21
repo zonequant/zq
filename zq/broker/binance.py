@@ -459,7 +459,6 @@ class Binance(BaseBroker):
         :param data:
         :return:
         """
-        print(data)
         self.assets.update(self.trade.assets)
         self.positions.update(self.trade.positions)
         account=data.get(ACCOUNT,None)
@@ -470,7 +469,6 @@ class Binance(BaseBroker):
         if len(position)>0:
             e = Event(POSITION, position)
             self.event.put(e)
-
 
 
     def get_exchange(self):
@@ -564,11 +562,12 @@ class Binance(BaseBroker):
             return assets
 
     def create_order(self, order: Order):
+        order.qty=self.format_qty(order.symbol,order.qty)
         params = {
             "symbol": order.symbol,
             "side": SIDE_MAP[order.side],
             "type": ORDER_TYPE_MAP[order.order_type],
-            "quantity":self.format_qty(order.symbol,order.qty),
+            "quantity":order.qty,
             "timestamp": get_cur_timestamp_ms()
         }
         if order.price:

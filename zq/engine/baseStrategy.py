@@ -30,6 +30,7 @@ class BaseStrategy(metaclass=abc.ABCMeta):
         self.event=EventManger.get_instance()
         self._broker=engine.broker
         self._datas=engine.datas
+        self.reg()
 
     def reg(self):
         self.event.register(BAR,self.on_bar)
@@ -56,16 +57,16 @@ class BaseStrategy(metaclass=abc.ABCMeta):
         pass
 
     def buy(self, *args,**kwargs):
-        self._broker.buy(*args,**kwargs)
+        return self._broker.buy(*args,**kwargs)
 
     def sell(self, *args,**kwargs):
-        self._broker.sell(*args,**kwargs)
+        return self._broker.sell(*args,**kwargs)
 
     def close(self, *args,**kwargs):
-        self._broker.close(*args,**kwargs)
+        return self._broker.close(*args,**kwargs)
 
     def cancel(self, *args, **kwargs):
-        self._broker.canel(*args, **kwargs)
+        return self._broker.canel(*args, **kwargs)
 
     def start(self):
         self.trading = True
@@ -98,7 +99,7 @@ class BaseStrategy(metaclass=abc.ABCMeta):
         pass
 
     def on_account(self,event):
-        pass
+        print(event)
 
     def on_stop(self):
         self.status=-1
