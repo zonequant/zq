@@ -16,6 +16,9 @@ import pandas as pd
 from zq.engine.aiowebsocket import BaseMarket
 import traceback
 from zq.engine.eventengine import Event
+import json
+from urllib.parse import urlencode
+
 
 market_type_map = {
     SPOT: "SPOT",
@@ -148,11 +151,13 @@ class Binance(BaseBroker):
             LISTENKEY: {
                 "path": "/api/v3/userDataStream",  #
                 "method": "POST",
+                "SIGN": False,
                 "auth": True
             },
             PUT_LISTENKEY: {
                 "path": "/api/v1/userDataStream",  #
                 "method": "PUT",
+                "SIGN": False,
                 "auth": True
             },
 
@@ -222,11 +227,13 @@ class Binance(BaseBroker):
             LISTENKEY: {
                 "path": "/sapi/v1/userDataStream",  #
                 "method": "POST",
+                "SIGN": False,
                 "auth": True
             },
             PUT_LISTENKEY: {
                 "path": "/sapi/v1/userDataStream",  #
                 "method": "PUT",
+                "SIGN": False,
                 "auth": True
             },
 
@@ -322,11 +329,13 @@ class Binance(BaseBroker):
             LISTENKEY: {
                 "path": "/fapi/v1/listenKey",  #
                 "method": "POST",
+                "SIGN": False,
                 "auth": True
             },
             PUT_LISTENKEY: {
                 "path": "/fapi/v1/listenKey",  #
                 "method": "PUT",
+                "SIGN": False,
                 "auth": True
             },
 
@@ -417,11 +426,13 @@ class Binance(BaseBroker):
             LISTENKEY: {
                 "path": "/dapi/v1/listenKey",  #
                 "method": "POST",
+                "SIGN": False,
                 "auth": True
             },
             PUT_LISTENKEY: {
                 "path": "/dapi/v1/listenKey",  #
                 "method": "PUT",
+                "SIGN": False,
                 "auth": True
             },
 
@@ -437,7 +448,7 @@ class Binance(BaseBroker):
         self.market_type = market_type
         self.market = Binance_Market(self)
         self.market.start()
-        if self.api_key and self.get_listenkey():
+        if self.api_key:
             self.trade = Binance_Trade(self)
             self.trade.start()
             self.trade.add_feed({ACCOUNT: self.on_account, ORDER: self.on_order})
@@ -448,6 +459,7 @@ class Binance(BaseBroker):
         :param data:
         :return:
         """
+        print(data)
         self.assets.update(self.trade.assets)
         self.positions.update(self.trade.positions)
         account=data.get(ACCOUNT,None)
@@ -455,7 +467,7 @@ class Binance(BaseBroker):
             e = Event(ACCOUNT, account)
             self.event.put(e)
         position = data.get(POSITION, None)
-        if len(account)>0:
+        if len(position)>0:
             e = Event(POSITION, position)
             self.event.put(e)
 
@@ -465,7 +477,7 @@ class Binance(BaseBroker):
         return self.fetch(EXCHANGE)
 
 
-    def exchange_parse(self, data):
+    def parse_exchange(self, data):
         """
         todo 数据重新解析
         """
@@ -477,25 +489,27 @@ class Binance(BaseBroker):
                 self.symbols[symbol] = s
             return self.symbols
 
-    def sign_request(self, request):
-        data = request.params if request.method == "GET" else request.data
-        if data:
-            msg = "&".join(["=".join([str(k), str(v)]) for k, v in data.items()])
-        else:
-            msg = ""
-        sign = hmac.new(self.api_secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
-        if isinstance(data, dict):
-            data["signature"] = sign
-        else:
-            data = {"signature": sign}
-        if request.method == "GET":
-            request.params = data
-        else:
-            request.data = data
+    def sign_request(self, request,sign=True):
+        if sign:
+            data = request.params if request.method == "GET" else request.data
+            if data:
+                msg = "&".join(["=".join([str(k), str(v)]) for k, v in data.items()])
+            else:
+                msg = ""
+            sign = hmac.new(self.api_secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+            if isinstance(data, dict):
+                data["signature"] = sign
+            else:
+                data = {"signature": sign}
+            if request.method == "GET":
+                request.params = data
+            else:
+                request.data = data
         header = dict()
         header["X-MBX-APIKEY"] = self.api_key
         request.headers = header
         return request
+
 
     def get_fees(self,symbol=None):
         p = {"timestamp": get_cur_timestamp_ms()}
@@ -514,7 +528,6 @@ class Binance(BaseBroker):
             return data
 
     def parse_balance(self, data):
-
         "适用于现货"
         if self.market_type==SPOT:
             balances = data["balances"]
@@ -555,11 +568,11 @@ class Binance(BaseBroker):
             "symbol": order.symbol,
             "side": SIDE_MAP[order.side],
             "type": ORDER_TYPE_MAP[order.order_type],
-            "quantity": order.qty,
+            "quantity":self.format_qty(order.symbol,order.qty),
             "timestamp": get_cur_timestamp_ms()
         }
         if order.price:
-            params["price"] = order.price
+            params["price"] = self.format_price(order.symbol,order.price)
         if order.order_type == LIMIT:
             params["timeInForce"] = "GTC"
 
@@ -572,6 +585,33 @@ class Binance(BaseBroker):
         else:
             order.order_id = msg
         return order
+
+    def format_qty(self,symbol,qty):
+        filters=self.symbols[symbol]['filters']
+        lot_size=None
+        for i in filters:
+            if  i["filterType"]=="LOT_SIZE":
+                lot_size=i
+                break
+        if lot_size:
+            min_qty = float(lot_size["minQty"])
+            min_qty = round(1 / min_qty)
+            qty=round(qty*min_qty)/min_qty
+        return qty
+
+
+    def format_price(self,symbol,price):
+        filters = self.symbols[symbol]['filters']
+        price_filter = None
+        for i in filters:
+            if i["filterType"] == "PRICE_FILTER":
+                price_filter = i
+                break
+        if price_filter:
+            min_price = float(price_filter["minPrice"])
+            min_price = round(1 / min_price)
+            price = round(price * min_price) / min_price
+        return price
 
     def parse_order(self, data):
         """
@@ -672,14 +712,28 @@ class Binance(BaseBroker):
 
 
     def parse_ticker(self, data):
-        tick = Ticker()
-        tick.symbol = data["symbol"]
-        tick.ask_price = float(data["askPrice"])
-        tick.ask_volume = float(data["askQty"])
-        tick.bid_price = float(data["bidPrice"])
-        tick.bid_volume = float(data["bidQty"])
-        tick.mid_price = (tick.ask_price + tick.bid_price) / 2
-        return tick
+        def pt(d):
+            tick = Ticker()
+            tick.symbol = d["symbol"]
+            tick.ask_price = float(d["askPrice"])
+            tick.ask_volume = float(d["askQty"])
+            tick.bid_price = float(d["bidPrice"])
+            tick.bid_volume = float(d["bidQty"])
+            tick.mid_price = (tick.ask_price + tick.bid_price) / 2
+            tick.close=float(d["lastPrice"])
+            return tick
+        if 'code' in data:
+            log.warning("get ticker is error!")
+            log.warning(data)
+        else:
+            if isinstance(data, list):
+                rt = {}
+                for i in data:
+                    t = pt(i)
+                    rt[i.symbol] = t
+            else:
+                rt = pt(data)
+            return rt
 
     def get_order_book(self, symbol):
         p = {"symbol": symbol}
@@ -699,7 +753,6 @@ class Binance(BaseBroker):
         p = {"timestamp": get_cur_timestamp_ms()}
         pos = self.fetch(POSITION, p)
         return pos
-
     def parse_position(self, data):
         """
         {
@@ -962,6 +1015,8 @@ class Binance_Market(BaseMarket):
         """
         if "ping" in str(data):
             await self.ping()
+        # else:
+        #     log.warning("No match:" + str(data))
 
     def parse_bar(self, data):
         try:
@@ -1036,10 +1091,10 @@ class Binance_Trade(Binance_Market):
     channels = {
         SPOT: {
             ACCOUNT: {
-                "topic": "ACCOUNT_UPDATE"
+                "topic": "Account",
             },
             ORDER: {
-                "topic": "ORDER_TRADE_UPDATE"
+                "topic": "executionReport"
             }
         },
         MARGIN: {
@@ -1068,6 +1123,7 @@ class Binance_Trade(Binance_Market):
         }
     }
     listenkey_time = 0
+
     def get_url(self):
         """
         获取listenkey
@@ -1078,7 +1134,6 @@ class Binance_Trade(Binance_Market):
         return url + "/" + listenKey
 
     async def ping(self):
-
         if self.listenkey_time+60*60<get_cur_timestamp():
             self.broker.update_listenkey()
             self.listenkey_time=get_cur_timestamp()
@@ -1112,10 +1167,23 @@ class Binance_Trade(Binance_Market):
         """
         todo 合约的已经测试完毕，还需要添加现货的
         """
-        if "ACCOUNT_UPDATE" in str(data):
+        assets = {}
+        ps = {}
+        if "outboundAccountPosition" in str(data):
+            data = data["B"]
+            for b in data:
+                asset = Asset()
+                asset.name = b["a"]
+                asset.frozen = float(b["l"])
+                asset.free = float(b["f"])
+                asset.balance = asset.frozen + asset.free
+                assets[asset.name] = asset
+            self.assets.update(assets)
+        # U合位合约
+        elif "ACCOUNT_UPDATE" in str(data):
             data=data["a"]
-            bss=data["B"]
-            assets = {}
+            bss=data["d"]
+
             for b in bss:
                 asset= Asset()
                 asset.name = b["a"]
@@ -1124,9 +1192,8 @@ class Binance_Trade(Binance_Market):
                 asset.frozen =asset.balance- asset.free
                 assets[asset.name]=asset
             self.assets.update(assets)
-
             poss=data["P"]
-            ps={}
+
             for p in poss:
                 pos = Position()
                 pos.symbol = p["s"]
@@ -1146,6 +1213,6 @@ class Binance_Trade(Binance_Market):
                     pos.amount = abs(pos.amount)
                 ps[pos.symbol]=pos
             self.positions.update(ps)
-            result={ACCOUNT:assets , POSITION:ps}
-            return result
+        result={ACCOUNT:assets , POSITION:ps}
+        return result
 

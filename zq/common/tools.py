@@ -260,3 +260,7 @@ def progress_bar(percent):
     _output = sys.stdout
     _output.write(f'\rcomplete percent:{percent*100:.0f}%')
     _output.flush()
+
+def print_end(msg):
+    sys.stdout.flush()  # 立即刷新缓冲区
+    sys.stdout.write(f"\r{msg}")

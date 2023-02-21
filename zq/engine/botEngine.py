@@ -7,8 +7,6 @@
 
 
 
-from zq.common.const import *
-from zq.engine.orderManagerServer import OrderManagerServer
 import traceback
 from loguru import logger as log
 from zq.engine.eventengine import EventManger
@@ -18,14 +16,13 @@ from zq.engine.timeseries import Dataset
 class BotEngine(object):
     _datas=Dataset()
     strats=list()
-    _brokers=list()
+    _broker=None
     anlyzers=list()
     status=0
 
     def __init__(self):
         self.runstrat=list()
         self.ee=EventManger.get_instance()
-        self._brokers=BrokerManger(self._datas)
 
     def add_strategy(self, strategy, params : dict):
         """
@@ -34,13 +31,14 @@ class BotEngine(object):
         self.strats.append([strategy, params])
 
     def add_broker(self,broker):
-        self._brokers.add_broker(broker)
+        self._broker=broker
 
     def run(self):
         """
         策略启动
         """
-        if len(self._brokers)>0:
+
+        if  self._broker:
             for stratcls, params in self.strats:
                 strat=self.runstrategies(stratcls,params)
                 self.runstrat.append(strat)
@@ -52,9 +50,7 @@ class BotEngine(object):
         初始化策略，并进行相应配置
         """
         try:
-            strat = stratcls(self,params)
-            strat.set_broker(self._brokers)
-            strat.set_dataset(self._datas)
+            strat = stratcls(self,**params)
             log.info(f"策略{stratcls.__name__}加载完成。")
             strat.init()
             log.info(f"策略{stratcls.__name__}初始化完成。")
@@ -65,10 +61,10 @@ class BotEngine(object):
             log.error(traceback.print_exc())
 
     @property
-    def dataset(self):
+    def datas(self):
         return self._datas
 
     @property
-    def brokers(self):
-        return self._brokers
+    def broker(self):
+        return self._broker
 

@@ -4,35 +4,27 @@
 # @Author  : Dominolu
 # @File    : backtest.py
 # @Software: PyCharm
-import numba as nb
+
 import numpy as np
 import pandas as pd
 from .backengine import BackBroker
 from loguru import logger as log
 
 
-@nb.njit
+
 def run(data, factor, strategy, broker):
-    size = data.shape[0]
-    equity = np.empty(size, dtype=np.int64)  # 资产余额
-    returns = np.empty(size, dtype=np.int64)  # 每K线收益率
-    # base = np.empty(size, dtype=np.int64)  # 基准收益率
-    commission = np.empty(size, dtype=np.int64)  # 手续费
-    strategy.factor = factor
+    size = int(data.shape[0])
+    factor=strategy.factors(data)
     broker.strategy=strategy
     for i in range(size):
         strategy.data = data[:i+1]
         broker.data=data[:i+1]
         broker.match() #对上一根bar生成的订单进行虚拟撮合
         if i<size:
-            strategy.on_bar() #最后一根bar不能下单，需要全部平仓
+            strategy.next() #最后一根bar不能下单，需要全部平仓
         else:
             broker.close()  #结束撮合，全部平仓
-        equity[i]=broker.equity
-        returns[i]=broker.returns
-        commission[i]=broker.commission
-    log.info(f"完成回测")
-    return equity,returns,commission
+    return broker.equitys,broker.returns,broker.fees
 
 def analyzers(dt):
     """
@@ -91,8 +83,10 @@ def analyzers(dt):
 
 
 def backtest_factor(df: pd.DataFrame, broker, stratgry, factors: list):
-    data = df[['open', 'high', 'low', 'close', 'volume']].to_numpy()
+    data = df[['date','open', 'high', 'low', 'close', 'volume']].to_numpy()
     factor = df[factors].to_numpy()
-    results = run(data, factor, stratgry, broker)
-    results = analyzers(results)
+    results = run(data, factor, stratgry(), broker())
+    # results = analyzers(results)
     return results
+
+

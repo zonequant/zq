@@ -199,3 +199,36 @@ class TimeSeries():
         """
         self._data.resize(self.size + self.step_size)
         self.size = self._data.shape[0] - 1
+
+class Datas(object):
+    s:{}
+    _data:None
+    _i:0
+    def __init__(self,symbols,datas):
+         if len(symbols)==1 and isinstance(datas,pd.DataFrame):
+             self.add_data(symbols[0],datas)
+         elif isinstance(datas,list) and len(symbols)==len(datas):
+            self.symbols=symbols
+            self._datas=datas
+         else:
+             print("datas type error or datas size!=symbols size")
+
+    def add_data(self,symbol,data):
+        """
+        self.s["symbol"].close
+        :param symbol:
+        :param data:
+        :return:
+        """
+        self.s[symbol]=data.to_numpy()
+
+
+
+
+
+
+
+
+
+
+

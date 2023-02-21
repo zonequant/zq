@@ -3,10 +3,9 @@
 import abc
 from zq.common.tools import DictObj
 from zq.engine.eventengine import EventManger
-from zq.engine.barseries import BarSeries
+from zq.common.const import *
 from loguru import logger as log
-import numpy as np
-from zq.engine.timeseries import TimeSeries
+
 
 class BaseStrategy(metaclass=abc.ABCMeta):
     """
@@ -21,19 +20,24 @@ class BaseStrategy(metaclass=abc.ABCMeta):
     trading = False
 
     params = {
-        "period": 30
+
     }
 
     def __init__(self,engine, **kwargs):
-        kwargs.update(self.params)
+        self.params=kwargs
         self.p = DictObj(kwargs)
         self.status = 0     # 0 待启动  1 停止
         self.event=EventManger.get_instance()
-        self._broker=engine.brokers
+        self._broker=engine.broker
         self._datas=engine.datas
 
-    def set_dataset(self,data):
-        self._datas=data
+    def reg(self):
+        self.event.register(BAR,self.on_bar)
+        self.event.register(TICKER,self.on_tick)
+        self.event.register(ORDER,self.on_order)
+        self.event.register(POSITION,self.on_position)
+        self.event.register(ACCOUNT,self.on_account)
+
 
     def init(self):
         """
@@ -51,26 +55,31 @@ class BaseStrategy(metaclass=abc.ABCMeta):
         """
         pass
 
-    def buy(self, *args, **kwargs):
-        self._broker.buy(args, kwargs)
+    def buy(self, *args,**kwargs):
+        self._broker.buy(*args,**kwargs)
 
-    def sell(self, *args, **kwargs):
-        self._broker.sell(args, kwargs)
+    def sell(self, *args,**kwargs):
+        self._broker.sell(*args,**kwargs)
 
-    def close(self, *args, **kwargs):
-        self._broker.close(args, kwargs)
+    def close(self, *args,**kwargs):
+        self._broker.close(*args,**kwargs)
 
     def cancel(self, *args, **kwargs):
-        self._broker.canel(args, kwargs)
+        self._broker.canel(*args, **kwargs)
 
     def start(self):
         self.trading = True
 
     def get_positions(self, symbol=None):
-        return self._broker.positions(symbol)
+        return self._broker.get_position(symbol)
+
+    def get_balance(self,symbol=None):
+        return  self._broker.get_balance(symbol)
+
+    def get_ticker(self,symbol):
+        return  self._broker.get_ticker(symbol)
 
     def on_bar(self, event):
-        self.to_timeseries()
         self.next()
 
     def on_tick(self, event):
@@ -88,6 +97,9 @@ class BaseStrategy(metaclass=abc.ABCMeta):
     def on_position(self, event):
         pass
 
+    def on_account(self,event):
+        pass
+
     def on_stop(self):
         self.status=-1
 
@@ -95,14 +107,4 @@ class BaseStrategy(metaclass=abc.ABCMeta):
     def data(self):
         return self._datas
 
-    def to_timeseries(self):
-        li=[]
-        for i in dir(self):
-            if "__" not in i:
-                at=getattr(self,i)
-                if isinstance(at,np.ndarray):
-                    li.append([i,at])
-        for [k,v] in li:
-            v=TimeSeries(v)
-            setattr(self,k,v)
-            self._datas.add(v,name=k)
+

@@ -8,7 +8,8 @@
 from requests import Request, Session
 from zq.common.tools import *
 import zq.common.const as c
-
+import json
+from urllib.parse import quote
 
 
 class RestClient:
@@ -57,6 +58,7 @@ class RestClient:
             path = api.get("path")
             m = api.get("method")
             auth = api.get("auth")
+            sign=api.get("SIGN",True)
             params = kwargs.get("data", None)
             request_path = path
             if m=="GET":
@@ -65,7 +67,7 @@ class RestClient:
                 request = Request(m, host + request_path, data=params)
             # 是否为私有数据，进行签名处理
             if auth:
-                request=self.sign_request(request)
+                request=self.sign_request(request,sign)
             return request
         else:
             return False
@@ -105,5 +107,8 @@ class RestClient:
         except:
             return response.text,False
 
-    def sign_request(self, request):
-        pass
+    def sign_request(self, request,sign=True):
+        return request
+
+
+

@@ -186,7 +186,7 @@ class Okex(BaseBroker):
         return self.fetch(EXCHANGE, p)
 
 
-    def exchange_parse(self, data):
+    def parse_exchange(self, data):
         if data.get("code", None) == "0":
             ls = data.get("data", [])
             for i in ls:
@@ -571,7 +571,7 @@ class Okex_Market(BaseMarket):
         "is_binary": False,
         "interval": 25  # 心跳间隔 单位秒
     }
-    host="wss://ws.okex.com:8443/ws/v5/public"
+    host="wss://ws.okx.com:8443/ws/v5/public"
     channels = {
         BAR: {
             "sub": '{"op": "subscribe","args": [{"channel": "{interval}","instId": "{symbol}"}]}',
@@ -584,8 +584,8 @@ class Okex_Market(BaseMarket):
             "auth": False
         },
        ORDER_BOOK: {
-            "sub": '{"op": "subscribe","args": [{"channel": "books-l2-tbt","instId": "{symbol}"}]}',
-            "topic": "books-l2-tbt",
+            "sub": '{"op": "subscribe","args": [{"channel": "books","instId": "{symbol}"}]}',
+            "topic": "books",
             "auth": False
         },
        FUNDING: {
@@ -680,7 +680,7 @@ class Okex_Market(BaseMarket):
 class Okex_Trade(Okex_Market):
     params = {
         "name": "OKEX",
-        "url": "wss://ws.okex.com:8443/ws/v5/private",
+        "url": "wss://ws.okx.com:8443/ws/v5/private",
         "is_binary": False,
         "interval": 20  # 心跳间隔
     }
@@ -698,7 +698,7 @@ class Okex_Trade(Okex_Market):
             "topic": "orders",
         },
     }
-    host ="wss://wsaws.okx.com:8443/ws/v5/private"
+    host ="wss://ws.okx.com:8443/ws/v5/private"
 
 
     async def connected_callback(self):

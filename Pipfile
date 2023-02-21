@@ -15,6 +15,7 @@ ta-lib = "*"
 empyrical = "*"
 redis = "*"
 numba = "*"
+websockets = "==9.1"
 
 [dev-packages]
 

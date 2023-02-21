@@ -1,6 +1,6 @@
 import talib
 import numpy as np
-import statsmodels.formula.api as sml
+# import statsmodels.formula.api as sml
 from zq.common.tools import *
 
 
@@ -22,12 +22,12 @@ def StochRSI(close,smoothK,smoothD,lengthRSI,lengthStoch):
     return fastk, fastd
 
 
-def sm_ols(data,N):
-    def ols(d):
-        model=sml.ols(formula="",data=d).fit()
-        return model[1]
-    beta = data.rolling(N).apply(ols, raw=True)
-    return beta
+# def sm_ols(data,N):
+#     def ols(d):
+#         model=sml.ols(formula="",data=d).fit()
+#         return model[1]
+#     beta = data.rolling(N).apply(ols, raw=True)
+#     return beta
 
 
 def sigmoid(x):  #sigmoid函数

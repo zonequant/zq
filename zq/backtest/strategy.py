@@ -14,7 +14,8 @@ class Strategy(metaclass=abc.ABCMeta):
     Strategy.init
     Strategy.next
     """
-    def __init__(self, broker, data):
+
+    def __init__(self, broker=None, data=None):
         """
         构造策略对象。
         @params broker:  ExchangeAPI    交易API接口，用于模拟交易
@@ -42,7 +43,7 @@ class Strategy(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def next(self,t):
+    def next(self):
         """
         步进函数，执行第tick步的策略。tick代表当前的"时间"。比如data[tick]用于访问当前的市场价格。
         """
@@ -58,4 +59,7 @@ class Strategy(metaclass=abc.ABCMeta):
     def data(self):
         return self._data
 
+    @data.setter
+    def data(self,data):
+        self._data=data
 

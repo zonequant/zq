@@ -19,6 +19,12 @@ class BrokerManger():
         broker.set_dataset(self._datas)
         self._brokers[broker.name]=broker
 
+    def __getattr__(self, item):
+        try:
+            getattr(self._brokers[self._brokers.keys()[0]],item)
+        except:
+            raise AttributeError(f"Not found attribute'{item}'")
+
     def buy(self,**kwargs):
         return
 

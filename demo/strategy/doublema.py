@@ -16,7 +16,7 @@ class Doublema(BaseStrategy):
     }
 
     def init(self):
-        close = self.data.close
+        close = self.data["test"].close
         self.sma1 = Ema(close, self.p.fast)
         self.sma2 = Ema(close, self.p.slow)
 
@@ -32,13 +32,15 @@ class Doublema(BaseStrategy):
         # 否则，这个时刻不执行任何操作。
         else:
             pass
+
+@time_cost
 def backtest():
     btc = pd.read_csv("btc.csv", parse_dates=True, infer_datetime_format=True)
-    btc = btc[0:10000]
-    bt = BackEngine(data=btc, strategy=Doublema, broker=BackBroker, cash=1000000.0, commission=0.003,out=True)
+    btc = btc[0:1000000]
+    bt = BackEngine(data=btc, strategy=Doublema, broker=BackBroker, cash=1000000.0, commission=0.003,out=False)
     bt.run()
     result = bt.result()
-    print(result.tail())
+    # print(result.tail())
     # pf.create_returns_tear_sheet(result["return"])
 
 if __name__ == '__main__':
