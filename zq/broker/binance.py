@@ -109,7 +109,7 @@ class Binance(BaseBroker):
                 "auth": False
             },
             FEE:{
-                "path": "/sapi/v1/asset/tradeFee",
+                "path": "/api/v3/account",
                 "method": "GET",
                 "auth": True
             },
@@ -236,6 +236,11 @@ class Binance(BaseBroker):
                 "SIGN": False,
                 "auth": True
             },
+            FEE: {
+                "path": "/api/v3/account",
+                "method": "GET",
+                "auth": True
+            },
 
         },
         USDT_SWAP: {
@@ -297,7 +302,7 @@ class Binance(BaseBroker):
             },
             POSITION: {
                 "path": "/fapi/v2/account",  #
-                "method": "POST",
+                "method": "GET",
                 "auth": True
             },
 
@@ -336,6 +341,11 @@ class Binance(BaseBroker):
                 "path": "/fapi/v1/listenKey",  #
                 "method": "PUT",
                 "SIGN": False,
+                "auth": True
+            },
+            FEE: {
+                "path": "/fapi/v1/commissionRate",
+                "method": "GET",
                 "auth": True
             },
 
@@ -400,7 +410,7 @@ class Binance(BaseBroker):
             },
             POSITION: {
                 "path": "/dapi/v1/account",  # 只支持全仓杠杆账户划转
-                "method": "POST",
+                "method": "GET",
                 "auth": True
             },
             TRANSFER: {
@@ -435,17 +445,19 @@ class Binance(BaseBroker):
                 "SIGN": False,
                 "auth": True
             },
+            FEE: {
+                "path": "/dapi/v1/commissionRate",
+                "method": "GET",
+                "auth": True
+            },
 
         },
     }
-    name = "Binance"
+    _name = "Binance"
 
     def __init__(self, api_key=None, api_secret=None, market_type=SPOT):
-        super().__init__()
+        super().__init__(api_key=api_key, api_secret=api_secret,market_type=market_type)
         self.symbols = self.get_exchange()
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.market_type = market_type
         self.market = Binance_Market(self)
         self.market.start()
         if self.api_key:
@@ -461,11 +473,11 @@ class Binance(BaseBroker):
         """
         self.assets.update(self.trade.assets)
         self.positions.update(self.trade.positions)
-        account=data.get(ACCOUNT,None)
+        account=data.get(ACCOUNT,[])
         if len(account)>0:
             e = Event(ACCOUNT, account)
             self.event.put(e)
-        position = data.get(POSITION, None)
+        position = data.get(POSITION, [])
         if len(position)>0:
             e = Event(POSITION, position)
             self.event.put(e)
@@ -515,6 +527,22 @@ class Binance(BaseBroker):
             p["symbol"] = symbol
         return self.fetch(FEE,p)
 
+    def parse_fee(self,data):
+        if self.market_type in(SPOT,MARGIN):
+            commissionRates=data["commissionRates"]
+            maker=commissionRates["maker"]
+            taker=commissionRates["taker"]
+            return {MAKER:maker,TAKER:taker}
+        else:
+            if len(data)>0:
+                marker=data["makerCommissionRate"]
+                taker=data["takerCommissionRate"]
+                return {MAKER:marker,TAKER:taker}
+            else:
+                log.error(data)
+                return None
+
+
     def get_balance(self, symbol=None):
         p = {"timestamp": get_cur_timestamp_ms()}
         data = self.fetch(BALANCE, p)
@@ -532,6 +560,7 @@ class Binance(BaseBroker):
             assets = {}
             for b in balances:
                 asset = Asset()
+                asset.broker = self.name
                 asset.name = b["asset"]
                 asset.free = float(b["free"])
                 asset.frozen = float(b["locked"])
@@ -664,6 +693,7 @@ class Binance(BaseBroker):
             return None
         else:
             o = Order()
+            o.broker = self.name
             o.order_id = data["orderId"]
             o.symbol = data["symbol"]
             o.qty = data["origQty"]
@@ -713,6 +743,7 @@ class Binance(BaseBroker):
     def parse_ticker(self, data):
         def pt(d):
             tick = Ticker()
+            tick.broker = self.name
             tick.symbol = d["symbol"]
             tick.ask_price = float(d["askPrice"])
             tick.ask_volume = float(d["askQty"])
@@ -735,23 +766,35 @@ class Binance(BaseBroker):
             return rt
 
     def get_order_book(self, symbol):
-        p = {"symbol": symbol}
+        p = {"symbol": symbol,"limit":1000 }
         ob = self.fetch(ORDER_BOOK, p)
-        ob.symbol = symbol
+        if ob:
+            ob.symbol = symbol
         return ob
 
     def parse_order_book(self, data):
-        ob = Order_book()
-        bids = data["bids"]
-        asks = data["asks"]
-        ob.update(bids, asks)
-        ob.update_time = get_cur_timestamp_ms()
-        return ob
+        if "bids" in data:
+            ob = Order_book()
+            ob.broker=self.name
+            bids = data["bids"]
+            asks = data["asks"]
+            ob.update(bids, asks)
+            ob.update_time = get_cur_timestamp_ms()
+            ob.last=data["lastUpdateId"]
+            return ob
+
 
     def get_position(self, symbol=None):
         p = {"timestamp": get_cur_timestamp_ms()}
         pos = self.fetch(POSITION, p)
-        return pos
+        if pos:
+            if symbol:
+                return pos.get(symbol, Position())
+            else:
+                return pos
+        else:
+            return Position()
+
     def parse_position(self, data):
         """
         {
@@ -777,6 +820,7 @@ class Binance(BaseBroker):
                 pos = self.positions.get(symbol,None)
                 if pos is None:
                     pos = Position()
+                    pos.broker = self.name
                     pos.symbol = symbol
                 pos.pnl = float(p["unrealizedProfit"])
                 pos.price = float(p["entryPrice"])
@@ -795,7 +839,7 @@ class Binance(BaseBroker):
                     pos.side = SHORT
                     pos.amount = abs(pos.amount)
                 self.positions[pos.symbol] = pos
-            return self.positions
+        return self.positions
 
     def set_leverage(self, symbol, leverage):
         """
@@ -821,6 +865,10 @@ timestamp	LONG	YES
     def get_funding(self, symbol):
         p = {"symbol": symbol}
         return self.fetch(FUNDING, p)
+
+    def parse_funding(self,data):
+        return {"symbol":data["symbol"],"fundingRate":data["lastFundingRate"],"fundingTime":data["nextFundingTime"]}
+
 
     def get_funding_his(self, symbol,startTime=None,endTime=None):
         p = {"instId": symbol,"limit":1000}
@@ -899,7 +947,7 @@ class Binance_Market(BaseMarket):
                 "auth": False
             },
             ORDER_BOOK: {
-                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth20@100ms"],"id":1024}',
+                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth@100ms"],"id":1024}',
                 "topic": "depthUpdate",
                 "auth": False
             }
@@ -921,7 +969,7 @@ class Binance_Market(BaseMarket):
                 "auth": False
             },
             ORDER_BOOK: {
-                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth20@100ms"],"id":1024}',
+                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth@100ms"],"id":1024}',
                 "topic": "depthUpdate",
                 "auth": False
             },
@@ -975,7 +1023,7 @@ class Binance_Market(BaseMarket):
                 "auth": False
             },
             ORDER_BOOK: {
-                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth20@100ms"],"id":1024}',
+                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth@100ms"],"id":1024}',
                 "topic": "depthUpdate",
                 "auth": False
             },
@@ -1005,6 +1053,10 @@ class Binance_Market(BaseMarket):
             if self.connected:
                 # 已经连接上ws，则直接发送订阅消息，否则等conned_callback统一发送
                 self._loop.create_task(self.send(i))
+    # async def connected_callback(self):
+    #     print(self.subscribes)
+    #     print(self.p.name)
+    #     super(BaseMarket, self).connected_callback()
 
     async def callback(self, data):
         """
@@ -1014,8 +1066,8 @@ class Binance_Market(BaseMarket):
         """
         if "ping" in str(data):
             await self.ping()
-        # else:
-        #     log.warning("No match:" + str(data))
+        else:
+            log.warning("No match:" + str(data))
 
     def parse_bar(self, data):
         try:
@@ -1044,15 +1096,70 @@ class Binance_Market(BaseMarket):
                 ob = self.order_books.get(symbol)
                 if ob is None:
                     ob = Order_book()
+                    ob.broker=self.name
                     ob.symbol = symbol
-                ob.update_time = float(data["T"])
-                asks = data["a"]#卖方深度
-                bids = data["b"]#买方深度
-                ob.update(bids, asks)
+                ob.queue.append(data)
+                self.order_books[symbol] = ob
+                self.update_orderbook(ob)
                 return ob
-
         except:
             log.error(traceback.print_exc())
+
+    def update_orderbook(self,ob):
+        if ob.synced>1:
+            if ob.synced == 2:
+                last=0
+                while len(ob.queue)>0:
+                    data=ob.queue.pop(0)
+                    last = data["u"]
+                    if data["U"] <= ob.last_id <= data["u"]:
+                        ob.update_time = float(data["T"])
+                        asks = data["a"]
+                        bids = data["b"]
+                        ob.update(bids, asks)
+                        ob.last_id = data["u"]
+                    else:
+                        continue
+                ob.last_id=last
+                ob.synced=3
+            else:
+                while len(ob.queue) > 0:
+                    data = ob.queue.pop(0)
+                    if self.market_type == SPOT:
+                        if ob.last_id+1 != data["U"]:
+                            ob.synced = 0
+                            self._loop.create_task(self.get_orderbook(ob.symbol))
+                            log.warning("spot event error")
+                            break
+                    else:
+                        if data["pu"] != ob.last_id:
+                            ob.synced = 0
+                            self._loop.create_task(self.get_orderbook(ob.symbol))
+                            log.warning("SWAP event error")
+                            break
+                    ob.update_time = float(data["E"])
+                    asks = data["a"]
+                    bids = data["b"]
+                    ob.update(bids, asks)
+                    ob.last_id = data["u"]
+                    ob.synced=3
+        elif ob.synced==0:
+            self._loop.create_task(self.get_orderbook(ob.symbol))
+            ob.synced=1
+
+    async def get_orderbook(self,symbol):
+        ob = self.broker.get_order_book(symbol)
+        orderbook = self.order_books[symbol]
+        orderbook.copy(ob)
+        orderbook.synced = 2
+
+
+
+
+
+
+
+
 
     def parse_ticker(self,data):
         """
@@ -1062,6 +1169,7 @@ class Binance_Market(BaseMarket):
         try:
             self.heartbeat_time = get_cur_timestamp()
             ticker = Ticker()
+            ticker.broker = self.name
             ticker.symbol = data["s"]
             ticker.amount = float(data["Q"])
             ticker.open = float(data["o"])
@@ -1090,34 +1198,43 @@ class Binance_Trade(Binance_Market):
     channels = {
         SPOT: {
             ACCOUNT: {
+                "sub": '{"method":"REQUEST","params":["@account"],"id":1024}',
                 "topic": "Account",
+                "auth": True
             },
             ORDER: {
-                "topic": "executionReport"
+                "topic": "executionReport",
+                "auth": True
             }
         },
         MARGIN: {
             ACCOUNT: {
-                "topic": "ACCOUNT_UPDATE"
+                "topic": "ACCOUNT_UPDATE",
+                "auth": True
             },
             ORDER: {
-                "topic": "ORDER_TRADE_UPDATE"
+                "topic": "ORDER_TRADE_UPDATE",
+                "auth": True
             }
         },
         USDT_SWAP: {
             ACCOUNT: {
-                "topic": "ACCOUNT_UPDATE"
+                "topic": "ACCOUNT_UPDATE",
+                "auth": True
             },
             ORDER: {
-                "topic": "ORDER_TRADE_UPDATE"
+                "topic": "ORDER_TRADE_UPDATE",
+                "auth": True
             }
         },
         SWAP: {
             ACCOUNT: {
-                "topic": "ACCOUNT_UPDATE"
+                "topic": "ACCOUNT_UPDATE",
+                "auth": True
             },
             ORDER: {
-                "topic": "ORDER_TRADE_UPDATE"
+                "topic": "ORDER_TRADE_UPDATE",
+                "auth": True
             }
         }
     }
@@ -1145,6 +1262,7 @@ class Binance_Trade(Binance_Market):
         if "ORDER_TRADE_UPDATE" in str(data):
             data=data["o"]
             o = Order()
+            o.broker = self.name
             o.order_id = data["i"]
             o.symbol = data["s"]
             o.qty = data["q"]
@@ -1172,6 +1290,7 @@ class Binance_Trade(Binance_Market):
             data = data["B"]
             for b in data:
                 asset = Asset()
+                asset.broker = self.name
                 asset.name = b["a"]
                 asset.frozen = float(b["l"])
                 asset.free = float(b["f"])
@@ -1185,6 +1304,7 @@ class Binance_Trade(Binance_Market):
 
             for b in bss:
                 asset= Asset()
+                asset.broker = self.name
                 asset.name = b["a"]
                 asset.balance =float(b["wb"])
                 asset.free=float(b["cw"])-float(b["bc"])
@@ -1195,6 +1315,7 @@ class Binance_Trade(Binance_Market):
 
             for p in poss:
                 pos = Position()
+                pos.broker = self.name
                 pos.symbol = p["s"]
                 pos.pnl = float(p["up"])
                 pos.price = float(p["ep"])

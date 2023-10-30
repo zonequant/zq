@@ -11,10 +11,4 @@ from zq.backtest.futurebroker import Futurebroker
 from zq.backtest.strategy import Strategy
 data = pd.read_csv("btc_liq.csv")
 
-
-
-
-
-
-
 dt = backtest_factor(data, Futurebroker, One, ["BUY", "SELL"])

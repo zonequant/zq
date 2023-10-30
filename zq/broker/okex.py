@@ -85,7 +85,7 @@ class Okex(BaseBroker):
     """
     api文档 https://www.okx.com/docs-v5/zh/#7d0fb355e8
     """
-    name = "OKEX"
+    _name = "OKEX"
     api = {
         BAR: {
             "path": "/api/v5/market/candles",
@@ -162,18 +162,27 @@ class Okex(BaseBroker):
             "method": "GET",
             "auth": False
             },
-
+        WITHDRAW:{
+            "path": "/api/v5/asset/withdrawal",  # 提币
+            "method": "GET",
+            "auth": True
+        },
+        TOKEN:{
+            "path": "/api/v5/asset/currencies",  # 提币
+            "method": "GET",
+            "auth": True
+        },
+        FEE:{"path": "/api/v5/account/trade-fee",  # 充币地址
+         "method":"GET",
+         "auth":True }
 
     }
     host = "https://aws.okx.com"
 
     def __init__(self, api_key=None, api_secret=None, passphrase=None, market_type=SPOT):
-        super().__init__()
+        super().__init__(api_key,api_secret,market_type)
         self.symbols = self.get_exchange()
-        self.api_key = api_key
-        self.api_secret = api_secret
         self.passphrase = passphrase
-        self.market_type = MARKET_TYPE_MAP[market_type]
         self.market = Okex_Market(self)
         self.market.start()
         if self.api_key:
@@ -195,7 +204,7 @@ class Okex(BaseBroker):
                 self.symbols[symbol] = i
             return self.symbols
 
-    def sign_request(self, request):
+    def sign_request(self, request,sign=True):
         time_stamp = get_timestamp()
         path = request.url
         path = urlparse(path)
@@ -477,27 +486,35 @@ class Okex(BaseBroker):
 
     def get_order_book(self, symbol):
         p = {"instId": symbol, "sz": 20}
-        return self.fetch(ORDER_BOOK, p)
+        ob=self.fetch(ORDER_BOOK, p)
+        if ob:
+            ob.symbol=symbol
+        return ob
 
     def parse_order_book(self, data):
         if data.get("code", None) == "0":
             data=data["data"][0]
             ob = Order_book()
+            ob.broker=self.name
             bids = data["bids"]
             asks = data["asks"]
             ob.update(bids, asks)
             ob.update_time = get_cur_timestamp_ms()
             return ob
 
-    def get_positions(self, symbol=None):
+
+    def get_position(self, symbol=None):
         p = {}
         if symbol:
             p["instId"] = symbol
         data = self.fetch(POSITION, p)
-        if symbol:
-            return data[symbol]
+        if data:
+            if symbol:
+                return data.get(symbol, Position())
+            else:
+                return data
         else:
-            return data
+            return Position()
 
     def parse_position(self, data):
         ls = data.get("data")
@@ -562,11 +579,51 @@ class Okex(BaseBroker):
             p["after"]=endTime
         return self.fetch(FUNDING_HIS, p)
 
+    def get_tokens(self,token):
+        p={"ccy":token}
+        return self.fetch(TOKEN, p)
+
+    def parse_token(self,data):
+        if data.get("code", None) == "0":
+            return data["data"]
+        else:
+            log.error(data)
+            return False
+
+    def withdraw(self,address,amount,chain,coin):
+        data=self.get_tokens(coin)
+        fee=0
+        for i in data:
+            if i["chain"]==chain:
+                fee=i["minFee"]
+        p = {"ccy": coin, "chain": chain, "amt": amount, "dest": "4", "toAddr": address,"fee":fee}
+        return self.fetch(WITHDRAW, p)
+
+    def get_fees(self,symbol=None):
+        p = {"instType": MARKET_TYPE_MAP[self.market_type]}
+        if symbol:
+            if self.market_type in(SPOT,MARGIN):
+                p["instId"] = symbol
+            else:
+                # instId: BTC-USDT-SWAP 转换为instFamily: BTC-USDT
+                symbol=self.symbols[symbol]
+                p["instFamily"] = symbol["instFamily"]
+        return self.fetch(FEE,p)
+
+    def parse_fee(self,data):
+        # maker/taker的值：正数，代表是返佣的费率；负数，代表平台扣除的费率。 统一负的转为正的
+        if data.get("code", None) == "0":
+            fee= data["data"][0]
+            maker =  fee.get("maker") or fee.get("makerU") or fee.get("makerUSDC")
+            taker = fee.get("taker") or fee.get("takerU") or fee.get("takerUSDC")
+            return {MAKER:-float(maker),TAKER:-float(taker)}
+        else:
+            log.error(data)
+            return None
 
 class Okex_Market(BaseMarket):
 
     params = {
-        "name":"OKEX",
         "topics": ["data"],
         "is_binary": False,
         "interval": 25  # 心跳间隔 单位秒
@@ -609,7 +666,7 @@ class Okex_Market(BaseMarket):
             if data:
                 d = data[0]
                 bar = Bar()
-                bar.broker=self.p.name
+                bar.broker=self.name
                 bar.symbol = symbol
                 bar.startTime=int(d[0])
                 bar.open=float(d[1])
@@ -631,12 +688,26 @@ class Okex_Market(BaseMarket):
                 data = data[0]
                 ob = self.order_books.get(symbol)
                 if ob is None:
-                    ob = Order_book()
+                    ob = self.broker.get_order_book(symbol)
+                    ob.broker=self.name
                     ob.symbol = symbol
                 ob.update_time = float(data["ts"])
                 bids = data["bids"]
+                bids = [[row[0], row[1]] for row in bids]
                 asks = data["asks"]
+                asks=[[row[0], row[1]] for row in asks]
+                if self.market_type in [FUTURES,SWAP,USDT_SWAP]:
+                    ctVal=float(self.broker.symbols.get(symbol)['ctVal'])
+                    ctValCcy=self.broker.symbols.get(symbol)['ctValCcy']
+                    tickSz=0.0001
+                    if ctValCcy=="USD":
+                        bids = [[row[0], round(float(row[1])*ctVal/float(row[0]),4)] for row in bids]
+                        asks = [[row[0], round(float(row[1])*ctVal/float(row[0]),4)] for row in asks]
+                    else:
+                        bids = [[row[0], round(float(row[1]) * ctVal,4)] for row in bids]
+                        asks = [[row[0], round(float(row[1]) * ctVal,4)] for row in asks]
                 ob.update(bids, asks)
+                self.order_books[symbol]=ob
                 return ob
         except:
             log.error(traceback.print_exc())
@@ -648,7 +719,7 @@ class Okex_Market(BaseMarket):
                 t = data[0]
                 ticker = Ticker()
                 ticker.symbol = t["instId"]
-                ticker.broker=self.p.name
+                ticker.broker=self.name
                 ticker.amount = float(t["volCcy24h"])
                 ticker.open = float(t["open24h"])
                 ticker.close = float(t["last"])
@@ -679,7 +750,6 @@ class Okex_Market(BaseMarket):
 
 class Okex_Trade(Okex_Market):
     params = {
-        "name": "OKEX",
         "url": "wss://ws.okx.com:8443/ws/v5/private",
         "is_binary": False,
         "interval": 20  # 心跳间隔
@@ -733,8 +803,8 @@ class Okex_Trade(Okex_Market):
                 for c in self.subscribes:
                     msg = json.loads(c)
                     await self.send(msg)
-        # if "pong" in data:
-        #     log.info("pong.")
+        else:
+            print(data)
 
     def parse_account(self, data):
         ls = data.get("data")
@@ -760,6 +830,7 @@ class Okex_Trade(Okex_Market):
         if ls:
             for i in ls:
                 order = Order()
+                order.broker=self.name
                 order_id = i["ordId"]
                 order.order_id = order_id
                 order.symbol = i["instId"]
@@ -786,6 +857,7 @@ class Okex_Trade(Okex_Market):
         if ls:
             for i in ls:
                 pos = Position()
+                pos.brorker = self.name
                 symbol = i["instId"]
                 side = i["posSide"]
                 qty = float(i["pos"])

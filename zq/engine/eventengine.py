@@ -4,6 +4,7 @@
 author: Jimmy
 contact:234390130@qq.com
 """
+import time
 # -*- coding:utf-8 -*-
 
 
@@ -121,7 +122,7 @@ if __name__ == '__main__':
 
         for i in range(100):
             e = Event("event")
-            e.data = {"int": i}
+            e.data = {"int": time.time()}
             ee.put(e)
 
 

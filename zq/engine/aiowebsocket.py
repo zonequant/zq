@@ -48,38 +48,29 @@ class Async_loop():
         run_coroutine_threadsafe(coro, self._loop)
 
 class Websocket():
-    url = ""
-    connected_callback = None
-    process_callback = None
-    process_binary_callback = None
-    check_conn_interval = None
+
 
     def __init__(self, check_conn_interval=10, proxy=None):
         """Initialize."""
+        self.url = ""
         self.check_conn_interval = check_conn_interval
         self.proxy = proxy
         self._ws = None  # Websocket connection object.
         self._loop=Async_loop()
+        self.session = aiohttp.ClientSession()
 
     @property
     def ws(self):
         return self._ws
 
-    def init(self, url, connected_callback, process_callback=None, process_binary_callback=None):
-        self.url = url
-        self.connected_callback = connected_callback
-        self.process_binary_callback = process_binary_callback
-        self.process_callback = process_callback
-
 
     async def _connect(self):
-        session = aiohttp.ClientSession()
         try:
             if self.proxy:
-                self._ws = await session.ws_connect(self.url, proxy=self.proxy)
+                self._ws = await self.session.ws_connect(self.url, proxy=self.proxy)
             else:
-                self._ws = await session.ws_connect(self.url)
-                log.debug("ws connected")
+                self._ws = await self.session.ws_connect(self.url)
+                log.debug(self.url+":ws connected")
             await self.connected_callback()
             log.debug("ws connected callback")
             await self._receive()
@@ -89,6 +80,14 @@ class Websocket():
             traceback.print_exc()
             await self._check_connection()
 
+    async def connected_callback(self):
+        pass
+
+    async def process_binary_callback(self):
+        pass
+
+    async def process_callback(self):
+        pass
 
     async def on_disconnected(self):
         log.info("connected closed.")
@@ -185,16 +184,6 @@ class BaseMarket(Websocket):
             }
         }
     }
-    assets = {}
-    orders = {}
-    positions = {}
-    order_books = {}
-    subscribes = []
-    callbacks = {}
-    connected = False
-    symbol=""
-    market_type=""
-    islogin=False
 
 
     def __init__(self, broker: BaseBroker,params=None,proxy=None):
@@ -207,6 +196,15 @@ class BaseMarket(Websocket):
         self.market_type=self.broker.market_type
         self.subscribe=self.get_channels()
         self.heartbeat_time = get_cur_timestamp()
+        self.subscribes = []
+        self.assets = {}
+        self.orders = {}
+        self.positions = {}
+        self.order_books = {}
+        self.callbacks = {}
+        self.islogin = False
+        self.symbol = ""
+        self.connected = False
 
     def get_channels(self):
         return self.channels[self.market_type]
@@ -228,15 +226,17 @@ class BaseMarket(Websocket):
                 #已经连接上ws，则直接发送订阅消息，否则等conned_callback统一发送
                 self._loop.create_task(self.send(i))
 
+
     def start(self):
         """
         """
-        url = self.get_url()
-        self.init(url, self.connected_callback, self.process_callback, self.process_binary_callback)
+        log.info(f" {self.name} start..")
+        self.url = self.get_url()
         self._loop.create_task(self._connect())
 
     def get_url(self):
-        #有些交易所这里需要重写，如币安需要请求listenKey
+        # 有些交易所这里需要重写，如币安需要请求listenKey
+        # 交易所broker具体实现这里重构
         market_type=self.broker.market_type
         url=self.host[market_type]
         return url
@@ -247,14 +247,14 @@ class BaseMarket(Websocket):
         await self.process_callback(data)
 
     async def connected_callback(self):
-        self.connected = True
+        # todo test 不同交易所订阅的频道不一样，需要重写
+
         for c in self.subscribes:
             msg=json.loads(c)
             await self.send(msg)
             log.info(f"send {msg}")
         # 订阅完后可开始处理心跳
         self._loop.create_task(self.heartbeat())
-
 
     async def heartbeat(self):
         self.heartbeat_time = get_cur_timestamp()

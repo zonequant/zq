@@ -23,9 +23,11 @@ class Config(dict):
         if isinstance(argument, str):
             dirname, filename = os.path.split(os.path.abspath(sys.argv[0]))
             file=os.path.join(dirname,argument)
-
-            with open(file = file, mode = 'r') as file:
-                argument = json.loads(file.read())
+            if os.path.exists(file):
+                with open(file = file, mode = 'r') as file:
+                    argument = json.loads(file.read())
+            else:
+                argument={}
         # 遍历字典，给自身赋值
         for key, value in argument.items():
             # 如果某个值是 dict 类型，递归调用自身构造函数

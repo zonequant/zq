@@ -13,19 +13,20 @@ from zq.engine.timeseries import Dataset
 from zq.engine.eventengine import EventManger,Event
 
 class BaseBroker(RestClient):
-    name=None
-    positions = {}
-    orders = {}
-    assets = {}
-    symbols={}
-    datas=None
+    _name = None
 
     def __init__(self, api_key=None, api_secret=None, market_type=SPOT):
         super().__init__()
+        self.positions = {}
+        self.orders = {}
+        self.assets = {}
+        self.symbols = {}
+        self.datas = None
         self.event=EventManger.get_instance()
         self.api_key = api_key
         self.api_secret = api_secret
         self.market_type = market_type
+        self.name = (self._name +"."+ self.market_type).lower()
         self.trade=None
         self.market=None
 

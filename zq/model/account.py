@@ -6,6 +6,7 @@ from collections import defaultdict
 
 @dataclass
 class Asset(Model):
+    broker:str=""
     name:str=""
     symbol:str=""
     balance: float = 0

@@ -13,14 +13,13 @@ from urllib.parse import quote
 
 
 class RestClient:
-    api = {}
     host = {}
-    lastRestRequestTimestamp = 0
-    rateLimit = 2000
-    enableRateLimit = False
-    market_type=c.SPOT
-
+    api = {}
     def __init__(self):
+        self.lastRestRequestTimestamp = 0
+        self.rateLimit = 2000
+        self.enableRateLimit = False
+        self.market_type = c.SPOT
         self.session = self.get_session()
 
     def get_session(self):
