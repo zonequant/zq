@@ -9,7 +9,7 @@
 
 import empyrical
 import pandas as pd
-import numpy as np
+
 
 """"
 param:

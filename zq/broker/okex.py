@@ -4,7 +4,6 @@
 @Author : domionlu@zquant.io
 @File : okex
 """
-# -*- coding:utf-8 -*-
 import base64
 from zq.engine.baseBroke import BaseBroker
 from zq.common.const import *
@@ -316,6 +315,7 @@ class Okex(BaseBroker):
         - 逐仓交割/永续/期权：isolated
         todo 2021.5.19 目标只支持币币或全仓模式，不支持逐仓模式
         """
+        order.qty=self.qty_ct(order.symbol,order.qty)
         p = {
             "instId": order.symbol,
             "side": SIDE_MAP[order.side],
@@ -340,6 +340,36 @@ class Okex(BaseBroker):
         else:
             order.order_id = msg
         return order
+
+    def qty_ct(self,symbol,qty):
+        """
+        合约使用张数，需要换算成币数，币币交易不需要换算
+        查询订单返回的张数需要换算成币数
+        :param symbol:
+        :param qty:
+        :return:
+        """
+        filters=self.symbols[symbol]
+        if self.market_type==SPOT:
+            lot_size=filters.get("lotSz",None)
+            if lot_size:
+                min_qty = float(lot_size["minQty"])
+                min_qty = round(1 / min_qty)
+                qty=round(qty*min_qty)/min_qty
+        else:
+            ctVal=filters.get("ctVal",None)
+            if ctVal:
+                min_qty = float(ctVal)
+                qty=round(qty/min_qty)
+        return qty
+
+    def ct_qty(self,symbol,qty):
+        if self.market_type==SPOT:
+            return qty
+        else:
+            filters=self.symbols[symbol]
+            qty=qty*float(filters["ctVal"])
+            return qty
 
     def parse_order(self, data):
         """
@@ -407,6 +437,11 @@ class Okex(BaseBroker):
         return self.fetch(ORDER_INFO, p)
 
     def parse_order_info(self, data):
+        """
+        合约返回的订单信息是张数，需要转换成币数
+        :param data:
+        :return:
+        """
         order = Order()
         order.symbol = data.get("instId")
         order.order_id = data.get("ordId")
@@ -414,8 +449,8 @@ class Okex(BaseBroker):
         order.avg_price = 0 if avgpx=="" else float(avgpx)
         order.price = float(data.get("px"))
         order.side = BUY if data.get("side") == "buy" else SELL
-        order.qty = float(data.get("sz"))
-        order.filled_qty = float(data.get("fillSz"))
+        order.qty=self.ct_qty(order.symbol,float(data.get("sz")))
+        order.filled_qty=self.ct_qty(order.symbol,float(data.get("fillSz")))
         order.fee = float(data.get("fee"))
         status = data.get("state")
         order.status = STATUS_MAP[status]
@@ -531,7 +566,7 @@ class Okex(BaseBroker):
             if pos is None:
                 pos = Position()
                 pos.symbol = i["instId"]
-                pos.qty = qty
+                pos.qty=self.ct_qty(symbol,qty)
             pos.price = float(i["avgPx"])
             pos.side = side
             pos.leverage = float(i["lever"])
@@ -834,7 +869,7 @@ class Okex_Trade(Okex_Market):
                 order_id = i["ordId"]
                 order.order_id = order_id
                 order.symbol = i["instId"]
-                order.qty = float(i.get("sz",0))
+                order.qty =self.broker.ct_qty(order.symbol,float(i.get("sz",0)))
                 px = data.get("px", 0)
                 order.price = 0.0 if px == "" else float(px)
                 side = i["side"]
@@ -843,13 +878,15 @@ class Okex_Trade(Okex_Market):
                 else:
                     order.side =OPEN_SELL
                 order.status = STATUS_MAP[i["state"]]
-                order.filled_qty = float(i.get("fillSz",0))
+                order.filled_qty = self.broker.ct_qty(float(i.get("fillSz",0)))
                 avgpx = data.get("avgPx", 0)
                 order.avg_price = 0.0 if avgpx == "" else float(avgpx)
                 order.time = i["uTime"]
                 order.fee = i["fee"]
                 orders[order_id]=order
             return orders
+
+
 
     def parse_position(self, data):
         ls = data.get("data")
@@ -867,7 +904,7 @@ class Okex_Trade(Okex_Market):
                     side =SHORT
                     qty = abs(qty)
                 pos.symbol = symbol
-                pos.qty = qty
+                pos.qty =self.broker.ct_qty(symbol,qty)
                 pos.price = i["avgPx"]
                 pos.side = side
                 pos.avg_price = i["avgPx"]

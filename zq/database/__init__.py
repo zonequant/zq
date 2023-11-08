@@ -6,9 +6,8 @@
 """
 # -*- coding:utf-8 -*-
 from .mongo import MongoEngine
-from zq.common.logger import log
 import threading
-
+from loguru import logger as log
 
 
 def get_mongo(uri,database):

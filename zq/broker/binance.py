@@ -1,10 +1,9 @@
-# -*- coding:utf-8 -*-
+﻿# -*- coding:utf-8 -*-
 """
 @Time : 2021/5/8 10:03
 @Author : domionlu@zquant.io
-@File : okex
+@File : biannce
 """
-# -*- coding:utf-8 -*-
 from zq.engine.baseBroke import BaseBroker
 from zq.common.const import *
 from zq.common.tools import *
@@ -16,9 +15,6 @@ import pandas as pd
 from zq.engine.aiowebsocket import BaseMarket
 import traceback
 from zq.engine.eventengine import Event
-import json
-from urllib.parse import urlencode
-
 
 market_type_map = {
     SPOT: "SPOT",

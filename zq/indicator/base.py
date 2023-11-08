@@ -7,7 +7,7 @@
 @Software: PyCharm
 """
 import numpy as np
-import statsmodels.formula.api as sml
+
 import pandas as pd
 import talib
 
