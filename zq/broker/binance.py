@@ -491,6 +491,8 @@ class Binance(BaseBroker):
             for s in symbols:
                 symbol = s["symbol"]
                 s["market_type"] = self.market_type
+                s["base"]=s["baseAsset"]
+                s["quote"]=s["quoteAsset"]
                 self.symbols[symbol] = s
             return self.symbols
 

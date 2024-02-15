@@ -200,6 +200,8 @@ class Okex(BaseBroker):
             for i in ls:
                 symbol = i["instId"]
                 i["market_type"]=self.market_type
+                i["quote"]=i["quoteCcy"]
+                i["base"]=i["baseCcy"]
                 self.symbols[symbol] = i
             return self.symbols
 
