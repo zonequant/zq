@@ -412,6 +412,7 @@ class Okex(BaseBroker):
                 data.append(order)
             return data
         else:
+            log.error(f"parse order err:{data}")
             return None
 
     def cancel_order(self, order):
@@ -478,6 +479,9 @@ class Okex(BaseBroker):
                     order.market_type = k
             order.time = int(data.get("cTime"))
             return order
+        else:
+            log.error(f"parse order info err:{data}")
+            return None
 
     def get_bar(self, symbol, interval=INTERVAL_DAY, start_time=None,end_time=None):
         p = {"instId": symbol, "bar": INTERVAL_MAP[interval]}

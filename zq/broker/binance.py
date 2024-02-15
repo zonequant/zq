@@ -694,6 +694,7 @@ class Binance(BaseBroker):
 
     def parse_order_info(self, data):
         if "code" in data:
+            log.error(f"parse order error:{data}")
             return None
         else:
             o = Order()
