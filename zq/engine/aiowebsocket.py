@@ -8,7 +8,8 @@ from asyncio import (
 )
 from threading import Thread
 from aiohttp.http import WSMsgType
-
+from zq.model.order_book import Order_book
+from collections import defaultdict
 import json
 import traceback
 import gzip
@@ -200,7 +201,7 @@ class BaseMarket(Websocket):
         self.assets = {}
         self.orders = {}
         self.positions = {}
-        self.order_books = {}
+        self.order_books = defaultdict(Order_book)
         self.callbacks = {}
         self.islogin = False
         self.symbol = ""

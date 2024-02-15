@@ -4,6 +4,8 @@
 @Author : domionlu@zquant.io
 @File : basetrade
 """
+from collections import defaultdict
+
 from zq.engine.restclient import RestClient
 from zq.common.const import *
 from abc import abstractmethod
@@ -13,11 +15,11 @@ from zq.engine.timeseries import Dataset
 from zq.engine.eventengine import EventManger,Event
 
 class BaseBroker(RestClient):
-    _name = None
+    _name = ""
 
     def __init__(self, api_key=None, api_secret=None, market_type=SPOT):
         super().__init__()
-        self.positions = {}
+        self.positions = defaultdict(Position)
         self.orders = {}
         self.assets = {}
         self.symbols = {}

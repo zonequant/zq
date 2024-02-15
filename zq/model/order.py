@@ -29,3 +29,11 @@ class Order(Model):
     status:str=c.STATUS_NEW
     err_msg:str=""
     time: float = 0
+
+    @property
+    def amount(self):
+        if self.price==0:
+            return self.qty*self.avg_price
+        else:
+            return self.qty*self.price
+

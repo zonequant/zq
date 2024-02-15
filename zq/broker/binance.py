@@ -1,4 +1,3 @@
-﻿# -*- coding:utf-8 -*-
 """
 @Time : 2021/5/8 10:03
 @Author : domionlu@zquant.io
@@ -539,13 +538,18 @@ class Binance(BaseBroker):
                 return None
 
 
-    def get_balance(self, symbol=None):
+    def get_balance(self, asset=None):
         p = {"timestamp": get_cur_timestamp_ms()}
         data = self.fetch(BALANCE, p)
-        # print(data)
         self.assets = data
-        if symbol:
-            return data[symbol]
+        if asset:
+            if asset in data:
+                return data[asset]
+            else:
+                result=Asset()
+                result.name=asset
+                result.broker=self.name
+                return result
         else:
             return data
 
@@ -602,6 +606,8 @@ class Binance(BaseBroker):
 
         status, msg = self.fetch(ORDER, params)
         order.status = status
+        order.broker = self.name
+        order.market_type = self.market_type
         if status == STATUS_REJECTED:
             order.err_msg = msg
             log.error(order)
@@ -692,9 +698,10 @@ class Binance(BaseBroker):
             o.broker = self.name
             o.order_id = data["orderId"]
             o.symbol = data["symbol"]
-            o.qty = data["origQty"]
-            o.price = data["price"]
-            o.filled_qty = data["executedQty"]
+            o.qty =float( data["origQty"]) # 委托数量
+            o.price = float(data["price"]) # 委托价格
+            o.filled_qty =float(data["executedQty"]) #成交量
+            o.avg_price=float(data["avgPrice"]) #成交价格
             o.status = STATUS_MAP[data["status"]]
             o.time = data.get("time",get_cur_timestamp())
             o.market_type = self.market_type
@@ -785,7 +792,7 @@ class Binance(BaseBroker):
         pos = self.fetch(POSITION, p)
         if pos:
             if symbol:
-                return pos.get(symbol, Position())
+                return pos[symbol]
             else:
                 return pos
         else:
@@ -813,19 +820,17 @@ class Binance(BaseBroker):
             poss = data["positions"]
             for p in poss:
                 symbol=p["symbol"]
-                pos = self.positions.get(symbol,None)
-                if pos is None:
-                    pos = Position()
-                    pos.broker = self.name
-                    pos.symbol = symbol
+                pos = self.positions[symbol]
+                pos.broker = self.name
+                pos.symbol = symbol
                 pos.pnl = float(p["unrealizedProfit"])
                 pos.price = float(p["entryPrice"])
-                pos.amount = float(p["positionAmt"])
+                pos.qty = float(p["positionAmt"])
                 pos.side = p["positionSide"]
                 pos.margin = float(p["positionInitialMargin"])
                 pos.leverage = int(p["leverage"])
                 if 'BOTH' == pos.side:
-                    if pos.amount < 0:
+                    if pos.qty < 0:
                         pos.side = LONG
                     else:
                         pos.side = SHORT
@@ -833,7 +838,7 @@ class Binance(BaseBroker):
                     pos.side = LONG
                 else:
                     pos.side = SHORT
-                    pos.amount = abs(pos.amount)
+                pos.qty = abs(pos.qty)
                 self.positions[pos.symbol] = pos
         return self.positions
 
@@ -1089,65 +1094,58 @@ class Binance_Market(BaseMarket):
             self.heartbeat_time = get_cur_timestamp()
             symbol = data["s"]
             if data:
-                ob = self.order_books.get(symbol)
-                if ob is None:
-                    ob = Order_book()
-                    ob.broker=self.name
-                    ob.symbol = symbol
+                ob = self.order_books[symbol]
+                ob.broker=self.name
+                ob.symbol = symbol
                 ob.queue.append(data)
-                self.order_books[symbol] = ob
                 self.update_orderbook(ob)
                 return ob
         except:
             log.error(traceback.print_exc())
 
     def update_orderbook(self,ob):
-        if ob.synced>1:
-            if ob.synced == 2:
-                last=0
-                while len(ob.queue)>0:
-                    data=ob.queue.pop(0)
-                    last = data["u"]
-                    if data["U"] <= ob.last_id <= data["u"]:
-                        ob.update_time = float(data["T"])
-                        asks = data["a"]
-                        bids = data["b"]
-                        ob.update(bids, asks)
-                        ob.last_id = data["u"]
-                    else:
-                        continue
-                ob.last_id=last
-                ob.synced=3
-            else:
-                while len(ob.queue) > 0:
-                    data = ob.queue.pop(0)
-                    if self.market_type == SPOT:
-                        if ob.last_id+1 != data["U"]:
-                            ob.synced = 0
-                            self._loop.create_task(self.get_orderbook(ob.symbol))
-                            log.warning("spot event error")
-                            break
-                    else:
-                        if data["pu"] != ob.last_id:
-                            ob.synced = 0
-                            self._loop.create_task(self.get_orderbook(ob.symbol))
-                            log.warning("SWAP event error")
-                            break
-                    ob.update_time = float(data["E"])
-                    asks = data["a"]
-                    bids = data["b"]
-                    ob.update(bids, asks)
-                    ob.last_id = data["u"]
-                    ob.synced=3
+        if ob.synced==2:
+            while len(ob.queue)>0:
+                data=ob.queue.pop(0)
+                if data['u'] <= ob.last_id :
+                    continue
+                asks = data["a"]
+                bids = data["b"]
+                ob.update(bids, asks)
+                ob.last_id = data["u"]
+                ob.update_time = float(data["E"])
+            ob.synced=3
+        elif ob.synced==3:
+            while len(ob.queue) > 0:
+                data = ob.queue.pop(0)
+                if self.market_type == SPOT:
+                    if ob.last_id+1 != data["U"]:
+                        ob.synced = 1
+                        self._loop.create_task(self.get_orderbook(ob.symbol))
+                        log.warning("spot event error")
+                        break
+                else:
+                    if data['pu'] != ob.last_id :
+                        ob.synced = 1
+                        self._loop.create_task(self.get_orderbook(ob.symbol))
+                        log.warning("SWAP event error")
+                        break
+                ob.update_time = float(data["E"])
+                asks = data["a"]
+                bids = data["b"]
+                ob.update(bids, asks)
+                ob.last_id = data["u"]
         elif ob.synced==0:
+            ob.synced = 1
             self._loop.create_task(self.get_orderbook(ob.symbol))
-            ob.synced=1
+
 
     async def get_orderbook(self,symbol):
         ob = self.broker.get_order_book(symbol)
         orderbook = self.order_books[symbol]
         orderbook.copy(ob)
-        orderbook.synced = 2
+        orderbook.synced=2
+
 
 
 
@@ -1261,9 +1259,10 @@ class Binance_Trade(Binance_Market):
             o.broker = self.name
             o.order_id = data["i"]
             o.symbol = data["s"]
-            o.qty = data["q"]
-            o.price = data["p"]
-            o.filled_qty = data["z"]
+            o.qty =float(data["q"])
+            o.price =float(data["p"])
+            o.avg_price=float(data['ap'])
+            o.filled_qty = float(data["z"])
             o.status = STATUS_MAP[data["X"]]
             side = data["S"]
             o.time = data["T"]
@@ -1296,8 +1295,7 @@ class Binance_Trade(Binance_Market):
         # U合位合约
         elif "ACCOUNT_UPDATE" in str(data):
             data=data["a"]
-            bss=data["d"]
-
+            bss=data["B"]
             for b in bss:
                 asset= Asset()
                 asset.broker = self.name
@@ -1315,10 +1313,10 @@ class Binance_Trade(Binance_Market):
                 pos.symbol = p["s"]
                 pos.pnl = float(p["up"])
                 pos.price = float(p["ep"])
-                pos.amount = float(p["pa"])
+                pos.qty = float(p["pa"])
                 pos.side = p["ps"]
                 if 'BOTH' == pos.side:
-                    if pos.amount < 0:
+                    if pos.qty < 0:
                         pos.side = LONG
                     else:
                         pos.side = SHORT
@@ -1326,7 +1324,7 @@ class Binance_Trade(Binance_Market):
                     pos.side = LONG
                 else:
                     pos.side = SHORT
-                    pos.amount = abs(pos.amount)
+                pos.qty = abs(pos.qty)
                 ps[pos.symbol]=pos
             self.positions.update(ps)
         result={ACCOUNT:assets , POSITION:ps}

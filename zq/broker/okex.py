@@ -268,14 +268,20 @@ class Okex(BaseBroker):
 
 
 
-    def get_balance(self, symbol=None):
+    def get_balance(self, asset=None):
         p = ""
-        if symbol:
-            p = {"ccy": symbol}
+        if asset:
+            p = {"ccy": asset}
         data = self.fetch(BALANCE, p)
         self.assets = data
-        if symbol:
-            return data[symbol]
+        if asset:
+            if asset in data:
+                return data[asset]
+            else:
+                result= Asset()
+                result.name = asset
+                result.broker = self.name
+                return result
         else:
             return data
 
@@ -295,6 +301,9 @@ class Okex(BaseBroker):
                 asset.balance = float(i.get("eq"))
                 assets[asset.name] = asset
             return assets
+        else:
+            log.info(f"get balance error {data}")
+            return {}
 
 
     def create_order(self,  order: Order):
@@ -333,6 +342,8 @@ class Okex(BaseBroker):
             p["px"] = order.price
         status, msg = self.fetch(ORDER, p)
         order.status = status
+        order.broker = self.name
+        order.market_type = self.market_type
         if status == STATUS_REJECTED:
             order.err_msg = msg
             log.error(order)
@@ -442,24 +453,29 @@ class Okex(BaseBroker):
         :param data:
         :return:
         """
-        order = Order()
-        order.symbol = data.get("instId")
-        order.order_id = data.get("ordId")
-        avgpx=data.get("avgPx",0)
-        order.avg_price = 0 if avgpx=="" else float(avgpx)
-        order.price = float(data.get("px"))
-        order.side = BUY if data.get("side") == "buy" else SELL
-        order.qty=self.ct_qty(order.symbol,float(data.get("sz")))
-        order.filled_qty=self.ct_qty(order.symbol,float(data.get("fillSz")))
-        order.fee = float(data.get("fee"))
-        status = data.get("state")
-        order.status = STATUS_MAP[status]
-        order.order_type = ord_type_map[data.get("ordType")]
-        for k, v in MARKET_TYPE_MAP.items():
-            if v == data.get("instType"):
-                order.market_type = k
-        order.time = data.get("cTime")
-        return order
+        if data.get("code", None) == "0":
+            # log.info(data)
+            data=data["data"][0]
+            order = Order()
+            order.symbol = data.get("instId")
+            order.broker = self.name
+            order.market_type = self.market_type
+            order.order_id = data.get("ordId")
+            avgpx=data.get("avgPx",0)
+            order.avg_price = 0 if avgpx=="" else float(avgpx)
+            order.price = float(data.get("px"))
+            order.side = BUY if data.get("side") == "buy" else SELL
+            order.qty=self.ct_qty(order.symbol,float(data.get("sz")))
+            order.filled_qty=self.ct_qty(order.symbol,float(data.get("fillSz")))
+            order.fee = float(data.get("fee"))
+            status = data.get("state")
+            order.status = STATUS_MAP[status]
+            order.order_type = ord_type_map[data.get("ordType")]
+            for k, v in MARKET_TYPE_MAP.items():
+                if v == data.get("instType"):
+                    order.market_type = k
+            order.time = int(data.get("cTime"))
+            return order
 
     def get_bar(self, symbol, interval=INTERVAL_DAY, start_time=None,end_time=None):
         p = {"instId": symbol, "bar": INTERVAL_MAP[interval]}
@@ -545,7 +561,7 @@ class Okex(BaseBroker):
         data = self.fetch(POSITION, p)
         if data:
             if symbol:
-                return data.get(symbol, Position())
+                return data[symbol]
             else:
                 return data
         else:
@@ -562,16 +578,14 @@ class Okex(BaseBroker):
             if side == "net" and qty < 0 or side == "short":
                 side = SHORT
                 qty = abs(qty)
-            pos = self.positions.get(symbol)
-            if pos is None:
-                pos = Position()
-                pos.symbol = i["instId"]
-                pos.qty=self.ct_qty(symbol,qty)
-            pos.price = float(i["avgPx"])
+            pos = self.positions[symbol]
+            pos.symbol = i["instId"]
+            pos.qty=self.ct_qty(symbol,qty)
+            pos.price = 0 if i["avgPx"]=="" else float(i["avgPx"])
             pos.side = side
-            pos.leverage = float(i["lever"])
-            pos.margin = float(i["margin"])
-            pos.available = float(i["availPos"])
+            pos.leverage = 0 if i["lever"]=="" else float(i["lever"])
+            pos.margin = 0 if i["margin"]=="" else float(i["margin"])
+            pos.available =0 if i["availPos"]=="" else float(i["availPos"])
             pos.time = i["uTime"]
             pos.pnl = i["upl"]
             self.positions[symbol] = pos
@@ -721,11 +735,9 @@ class Okex_Market(BaseMarket):
             data = data.get("data")
             if data:
                 data = data[0]
-                ob = self.order_books.get(symbol)
-                if ob is None:
-                    ob = self.broker.get_order_book(symbol)
-                    ob.broker=self.name
-                    ob.symbol = symbol
+                ob = self.order_books[symbol]
+                ob.broker=self.name
+                ob.symbol = symbol
                 ob.update_time = float(data["ts"])
                 bids = data["bids"]
                 bids = [[row[0], row[1]] for row in bids]
@@ -838,8 +850,7 @@ class Okex_Trade(Okex_Market):
                 for c in self.subscribes:
                     msg = json.loads(c)
                     await self.send(msg)
-        else:
-            print(data)
+
 
     def parse_account(self, data):
         ls = data.get("data")
@@ -905,12 +916,12 @@ class Okex_Trade(Okex_Market):
                     qty = abs(qty)
                 pos.symbol = symbol
                 pos.qty =self.broker.ct_qty(symbol,qty)
-                pos.price = i["avgPx"]
+                pos.price =0 if i["avgPx"]=="" else float(i["avgPx"])
                 pos.side = side
-                pos.avg_price = i["avgPx"]
-                pos.leverage = i["lever"]
-                pos.margin = i["margin"]
-                pos.available = i["availPos"]
+                pos.avg_price = float(i["avgPx"])
+                pos.leverage = 0 if i["lever"]=="" else float(i["lever"])
+                pos.margin =0 if i["margin"]=="" else float(i["margin"])
+                pos.available =0 if i["availPos"]=="" else float(i["availPos"])
                 pos.time = i["uTime"]
                 pos.pnl = i["upl"]
                 positions[symbol]=pos

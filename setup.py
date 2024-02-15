@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name='zquant',
-    version='0.3',
+    version='0.37',
     packages=find_packages(),
     author='Dominolu',
     author_email="dominolu@zquant.io",
