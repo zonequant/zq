@@ -662,7 +662,7 @@ class Ftx_Trade(Ftx_Market):
             else:
                 i+=1
         # 订阅完后可开始处理心跳
-        self._loop.create_task(self.heartbeat())
+        self.loop.create_task(self.heartbeat())
 
     def sign_sub(self, **kwargs):
         ts = int(time.time() * 1000)

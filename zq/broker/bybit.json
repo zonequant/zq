@@ -1,0 +1,74 @@
+{
+  "version": "v5",
+  "link":"https://bybit-exchange.github.io/docs/zh-TW/v5/intro",
+  "params":{
+        "is_binary": false,
+        "interval": 20
+    },
+  "host": {
+    "REST":"https://api.bybit.com",
+    "PUBLICWS":"wss://stream.bybit.com/v5/public",
+    "PRIVATEWS": "wss://stream.bybit.com/v5/private"
+  },
+
+  "api": {
+    "BAR": {
+      "path": "/v5/market/kline",
+      "method": "GET",
+      "auth": false
+    },
+    "DEPOSIT": {
+      "path": "/v5/asset/deposit/query-address",
+      "method": "GET",
+      "auth": true
+    },
+    "SUBDEPOSIT": {
+      "path": "/v5/asset/deposit/query-sub-member-address",
+      "method": "GET",
+      "auth": true
+    }
+  },
+  "channels" : {
+    "BAR": {
+      "sub": "{'op': 'subscribe','args': ['kline.{interval}.{symbol}']}",
+      "topic": "kline",
+      "auth": false
+    },
+    "TICKER": {
+      "sub": "{'op': 'subscribe','args': ['tickers.{symbol}']}",
+      "topic": "tickers",
+      "auth": false
+    },
+    "ORDER_BOOK": {
+      "sub": "{'op': 'subscribe','args': ['orderbook.50.{symbol}']}",
+      "topic": "orderbook",
+      "auth": false
+    },
+    "LIQUIDATIONS": {
+      "sub": "{'op': 'subscribe','args': ['liquidation.{symbol}']}",
+      "topic": "liquidation",
+      "auth": false
+    },
+    "TRADE": {
+      "sub": "{'op': 'subscribe','args': ['publicTrade.{symbol}']}",
+      "topic": "publicTrade",
+      "auth": false
+    },
+    "ACCOUNT": {
+      "sub": "{'op': 'subscribe','args': ['wallet']}",
+      "topic": "wallet",
+      "auth": true
+    },
+    "POSITION": {
+      "sub": "{'op': 'subscribe','args': ['position']}",
+      "topic": "position",
+      "auth": true
+    },
+    "ORDER": {
+      "sub": "{'op': 'subscribe','args': ['order']}",
+      "topic": "order",
+      "auth": true
+    }
+  }
+
+}

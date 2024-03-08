@@ -476,7 +476,8 @@ class Binance(BaseBroker):
         if len(position)>0:
             e = Event(POSITION, position)
             self.event.put(e)
-
+    def on_order(self,data):
+        self.event.put(Event(ORDER,data))
 
     def get_exchange(self):
         return self.fetch(EXCHANGE)
@@ -592,6 +593,33 @@ class Binance(BaseBroker):
                 assets[asset.name] = asset
             return assets
 
+    def order_value(self,symbol,amount):
+        side=SIDE_MAP[OPEN_BUY] if amount>0 else SIDE_MAP[OPEN_SELL]
+        params = {
+            "symbol": symbol,
+            "side": side,
+            "type": "MARKET",
+            "quoteOrderQty": abs(amount),
+            "timestamp": get_cur_timestamp_ms()
+        }
+        status, msg = self.fetch(ORDER, params)
+        order = Order()
+        order.symbol=symbol
+        order.qty=abs(amount)
+        order.side=side
+        order.status = status
+        order.broker = self.name
+        order.market_type = self.market_type
+        order.time = get_cur_timestamp_ms()
+        if status == STATUS_REJECTED:
+            order.err_msg = msg
+            log.error(order)
+            log.error(msg)
+        else:
+            order.order_id = msg
+        return order
+
+
     def create_order(self, order: Order):
         order.qty=self.format_qty(order.symbol,order.qty)
         params = {
@@ -610,6 +638,7 @@ class Binance(BaseBroker):
         order.status = status
         order.broker = self.name
         order.market_type = self.market_type
+        order.time=get_cur_timestamp_ms()
         if status == STATUS_REJECTED:
             order.err_msg = msg
             log.error(order)
@@ -690,6 +719,7 @@ class Binance(BaseBroker):
 
     def update_order(self, order):
         p = {"symbol": order.symbol, "orderId": order.order_id, "timestamp": get_cur_timestamp_ms()}
+        print(f"update order:{p}")
         return self.fetch(ORDER_INFO, p)
 
     def parse_order_info(self, data):
@@ -954,6 +984,11 @@ class Binance_Market(BaseMarket):
                 "sub": '{"method":"SUBSCRIBE","params":["{symbol}@depth@100ms"],"id":1024}',
                 "topic": "depthUpdate",
                 "auth": False
+            },
+            TRADE:{
+                "sub": '{"method":"SUBSCRIBE","params":["{symbol}@trade"],"id":1024}',
+                "topic": "trade",
+                "auth": False
             }
         },
         MARGIN: {
@@ -1056,7 +1091,7 @@ class Binance_Market(BaseMarket):
                 self.subscribes.append(i)
             if self.connected:
                 # 已经连接上ws，则直接发送订阅消息，否则等conned_callback统一发送
-                self._loop.create_task(self.send(i))
+                self.loop.create_task(self.send(i))
     # async def connected_callback(self):
     #     print(self.subscribes)
     #     print(self.p.name)
@@ -1092,6 +1127,17 @@ class Binance_Market(BaseMarket):
         except:
             log.error(traceback.print_exc())
 
+    def parse_trade(self,data):
+        try:
+            symbol = data["s"]
+            price = float(data["p"])
+            qty = float(data["q"])
+            time = int(data["T"])
+            is_buyer_maker = data["m"]
+            return {"symbol":symbol,"price":price,"qty":qty,"time":time,"is_buyer_maker":is_buyer_maker}
+        except:
+            log.error(traceback.print_exc())
+
     def parse_order_book(self,data):
         try:
             self.heartbeat_time = get_cur_timestamp()
@@ -1124,13 +1170,13 @@ class Binance_Market(BaseMarket):
                 if self.market_type == SPOT:
                     if ob.last_id+1 != data["U"]:
                         ob.synced = 1
-                        self._loop.create_task(self.get_orderbook(ob.symbol))
+                        self.loop.create_task(self.get_orderbook(ob.symbol))
                         log.warning("spot event error")
                         break
                 else:
                     if data['pu'] != ob.last_id :
                         ob.synced = 1
-                        self._loop.create_task(self.get_orderbook(ob.symbol))
+                        self.loop.create_task(self.get_orderbook(ob.symbol))
                         log.warning("SWAP event error")
                         break
                 ob.update_time = float(data["E"])
@@ -1140,7 +1186,7 @@ class Binance_Market(BaseMarket):
                 ob.last_id = data["u"]
         elif ob.synced==0:
             ob.synced = 1
-            self._loop.create_task(self.get_orderbook(ob.symbol))
+            self.loop.create_task(self.get_orderbook(ob.symbol))
 
 
     async def get_orderbook(self,symbol):
@@ -1195,7 +1241,6 @@ class Binance_Trade(Binance_Market):
     channels = {
         SPOT: {
             ACCOUNT: {
-                "sub": '{"method":"REQUEST","params":["@account"],"id":1024}',
                 "topic": "Account",
                 "auth": True
             },
@@ -1265,10 +1310,11 @@ class Binance_Trade(Binance_Market):
             o.qty =float(data["q"])
             o.price =float(data["p"])
             o.avg_price=float(data['ap'])
+
             o.filled_qty = float(data["z"])
             o.status = STATUS_MAP[data["X"]]
             side = data["S"]
-            o.time = data["T"]
+            o.time = int(data["T"])
             o.market_type = self.market_type
             if side == "BUY":
                 o.side = OPEN_BUY

@@ -39,14 +39,21 @@ class Async_loop():
         thread = Thread(target=self.run_loop, args=(self._loop,))
         thread.daemon = True
         thread.start()
-        log.debug("loop started")
+        log.debug(f"loop started")
 
     def run_loop(self,loop):
         set_event_loop(loop)
         self._loop.run_forever()
 
+
+
     def create_task(self,coro):
         run_coroutine_threadsafe(coro, self._loop)
+
+    @property
+    def loop(self):
+        return self._loop
+
 
 class Websocket():
 
@@ -57,8 +64,8 @@ class Websocket():
         self.check_conn_interval = check_conn_interval
         self.proxy = proxy
         self._ws = None  # Websocket connection object.
-        self._loop=Async_loop()
-        self.session = aiohttp.ClientSession()
+        self.loop=Async_loop()
+        self.session = aiohttp.ClientSession(loop=self.loop.loop)
 
     @property
     def ws(self):
@@ -225,7 +232,7 @@ class BaseMarket(Websocket):
                 self.subscribes.append(i)
             if self.connected:
                 #已经连接上ws，则直接发送订阅消息，否则等conned_callback统一发送
-                self._loop.create_task(self.send(i))
+                self.loop.create_task(self.send(i))
 
 
     def start(self):
@@ -233,7 +240,7 @@ class BaseMarket(Websocket):
         """
         log.info(f" {self.name} start..")
         self.url = self.get_url()
-        self._loop.create_task(self._connect())
+        self.loop.create_task(self._connect())
 
     def get_url(self):
         # 有些交易所这里需要重写，如币安需要请求listenKey
@@ -255,7 +262,7 @@ class BaseMarket(Websocket):
             await self.send(msg)
             log.info(f"send {msg}")
         # 订阅完后可开始处理心跳
-        self._loop.create_task(self.heartbeat())
+        self.loop.create_task(self.heartbeat())
 
     async def heartbeat(self):
         self.heartbeat_time = get_cur_timestamp()

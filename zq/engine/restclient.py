@@ -4,12 +4,13 @@
 @Author : domionlu@zquant.io
 @File : restclient
 """
+import traceback
+
 # -*- coding:utf-8 -*-
 from requests import Request, Session
 from zq.common.tools import *
 import zq.common.const as c
-import json
-from urllib.parse import quote
+from loguru import logger as log
 
 
 class RestClient:
@@ -73,21 +74,16 @@ class RestClient:
 
     def request(self, request):
         # 对接口访问是否有频率限制
-        if self.enableRateLimit:
-            self.delay()
-        req=request.prepare()
-        # print("---request---")
-        # print("url:"+request.url)
-        # print("head:" + str(request.headers))
-        # print("method:" + request.method)
-        # print("data:" + str(request.data))
-        response = self.session.send(req)
-        # print("---response---")
-        # print("code:" + str(response.status_code))
-        # print("text:" + response.text)
-        self.lastRestRequestTimestamp = get_cur_timestamp_ms()
-        # 对返回结果进行简单处理
-        return self._handel_request(response)
+        try:
+            if self.enableRateLimit:
+                self.delay()
+            req=request.prepare()
+            response = self.session.send(req)
+            self.lastRestRequestTimestamp = get_cur_timestamp_ms()
+            # 对返回结果进行简单处理
+            return self._handel_request(response)
+        except Exception as e:
+            log.error(f"request error,{req}")
 
     def delay(self):
         now = get_cur_timestamp_ms()

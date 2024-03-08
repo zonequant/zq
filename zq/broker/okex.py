@@ -9,6 +9,8 @@ from zq.engine.baseBroke import BaseBroker
 from zq.common.const import *
 from zq.common.tools import *
 import hmac
+
+from zq.engine.eventengine import Event
 from zq.model import Order, Asset, Position, Order_book, Ticker, Bar
 from loguru import logger as log
 import pandas as pd
@@ -67,9 +69,9 @@ ord_type_map = {
 MARKET_TYPE_MAP = {
     SPOT: "SPOT",
     MARGIN: "MARGIN",
-    SWAP: "SWAP",
-    FUTURES: "FUTURES",
-    USDT_SWAP: "SWAP",
+    SWAP: "SWAP", # 永续合约
+    FUTURES: "FUTURES", # 交割合约
+    USDT_SWAP: "SWAP",  # 永续合约
     OPTION: "OPTION"
 }
 
@@ -187,7 +189,11 @@ class Okex(BaseBroker):
         if self.api_key:
             self.trade = Okex_Trade(self)
             self.trade.start()
-            self.trade.add_feed({ACCOUNT: self.on_account, ORDER: self.on_order,POSITION:self.on_position},instType=self.market_type)
+            self.trade.add_feed({ACCOUNT: self.on_account, ORDER: self.on_order,POSITION:self.on_position},instType=MARKET_TYPE_MAP[self.market_type])
+
+    def on_order(self, data):
+        for k,v in data.items():
+            self.event.put(Event(ORDER, v))
 
     def get_exchange(self):
         p = {"instType": MARKET_TYPE_MAP[self.market_type]}
@@ -200,8 +206,12 @@ class Okex(BaseBroker):
             for i in ls:
                 symbol = i["instId"]
                 i["market_type"]=self.market_type
-                i["quote"]=i["quoteCcy"]
-                i["base"]=i["baseCcy"]
+                if self.market_type in(SPOT,MARGIN):
+                    i["quote"] = i["quoteCcy"]
+                    i["base"] = i["baseCcy"]
+                else:
+                    i["quote"] = i["settleCcy"]
+                    i["base"] = i["ctValCcy"]
                 self.symbols[symbol] = i
             return self.symbols
 
@@ -307,6 +317,33 @@ class Okex(BaseBroker):
             log.info(f"get balance error {data}")
             return {}
 
+    def order_value(self,symbol,amount):
+        side=SIDE_MAP[OPEN_BUY] if amount>0 else SIDE_MAP[OPEN_SELL]
+        params = {
+            "instId": symbol,
+            "side": side,
+            "ordType": "market",
+            "sz": abs(amount),
+            "tgtCcy":"quote_ccy",
+            "tdMode":"cash",
+            "timestamp": get_cur_timestamp_ms()
+        }
+        status, msg = self.fetch(ORDER, params)
+        order = Order()
+        order.symbol=symbol
+        order.qty=abs(amount)
+        order.side=side
+        order.status = status
+        order.broker = self.name
+        order.market_type = self.market_type
+        order.time = get_cur_timestamp_ms()
+        if status == STATUS_REJECTED:
+            order.err_msg = msg
+            log.error(order)
+            log.error(msg)
+        else:
+            order.order_id = msg
+        return order
 
     def create_order(self,  order: Order):
         """
@@ -345,6 +382,7 @@ class Okex(BaseBroker):
         status, msg = self.fetch(ORDER, p)
         order.status = status
         order.broker = self.name
+        order.time=get_cur_timestamp_ms()
         order.market_type = self.market_type
         if status == STATUS_REJECTED:
             order.err_msg = msg
@@ -704,6 +742,11 @@ class Okex_Market(BaseMarket):
             "sub": '{"op": "subscribe","args": [{"channel": "funding-rate","instId": "{symbol}"}]}',
             "topic": "funding-rate",
             "auth": False
+        },
+        TRADE:{
+            "sub": '{"op": "subscribe","args": [{"channel": "trades","instId": "{symbol}"}]}',
+            "topic": "trades",
+            "auth": False
         }
 
     }
@@ -798,6 +841,18 @@ class Okex_Market(BaseMarket):
             log.error(traceback.print_exc())
 
 
+    def parse_trade(self,data):
+        try:
+            trade=data["data"][0]
+            symbol = trade["instId"]
+            price = float(trade["px"])
+            qty = float(trade["sz"])
+            t = int(trade["ts"])
+            is_buyer_maker = trade["side"]
+            return {"symbol": symbol, "price": price, "qty": qty, "time": t, "is_buyer_maker": is_buyer_maker}
+        except:
+            pass
+
     async def ping(self):
         await self.send("ping")
 
@@ -828,7 +883,7 @@ class Okex_Trade(Okex_Market):
         self.connected = True
         sign = self.sign_sub()
         await self.send(sign)
-        self._loop.create_task(self.heartbeat())
+        self.loop.create_task(self.heartbeat())
 
 
     def sign_sub(self, **kwargs):
@@ -887,19 +942,17 @@ class Okex_Trade(Okex_Market):
                 order.order_id = order_id
                 order.symbol = i["instId"]
                 order.qty =self.broker.ct_qty(order.symbol,float(i.get("sz",0)))
-                px = data.get("px", 0)
-                order.price = 0.0 if px == "" else float(px)
+                order.price = 0.0 if i["px"] == "" else float( i["px"])
                 side = i["side"]
                 if side == "buy":
                     order.side =OPEN_BUY
                 else:
                     order.side =OPEN_SELL
                 order.status = STATUS_MAP[i["state"]]
-                order.filled_qty = self.broker.ct_qty(float(i.get("fillSz",0)))
-                avgpx = data.get("avgPx", 0)
-                order.avg_price = 0.0 if avgpx == "" else float(avgpx)
-                order.time = i["uTime"]
-                order.fee = i["fee"]
+                order.filled_qty = self.broker.ct_qty(order.symbol,float(i.get("fillSz",0)))
+                order.avg_price = 0.0 if i["avgPx"] == "" else float(i["avgPx"])
+                order.time =int(i["uTime"])
+                order.fee = float(i["fee"])
                 orders[order_id]=order
             return orders
 
@@ -924,7 +977,7 @@ class Okex_Trade(Okex_Market):
                 pos.qty =self.broker.ct_qty(symbol,qty)
                 pos.price =0 if i["avgPx"]=="" else float(i["avgPx"])
                 pos.side = side
-                pos.avg_price = float(i["avgPx"])
+                pos.avg_price = 0 if i["avgPx"]=="" else float(i["avgPx"])
                 pos.leverage = 0 if i["lever"]=="" else float(i["lever"])
                 pos.margin =0 if i["margin"]=="" else float(i["margin"])
                 pos.available =0 if i["availPos"]=="" else float(i["availPos"])

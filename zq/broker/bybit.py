@@ -35,25 +35,7 @@ SUBDEPOSIT="SUBDEPOSIT"
 class Bybit(BaseBroker):
     " api文档 https://bybit-exchange.github.io/docs/zh-TW/v5/intro"
     name = "Bybit"
-    api = {
-        BAR: {
-            "path": "/v5/market/kline",  # 调整开仓杠杆率
-            "method": "GET",
-            "auth": False
-        },
-        DEPOSIT: {
-            "path": "/v5/asset/deposit/query-address",  # 调整开仓杠杆率
-            "method": "GET",
-            "auth": True
-        },
-        SUBDEPOSIT: {
-            "path": "/v5/asset/deposit/query-sub-member-address",  # 调整开仓杠杆率
-            "method": "GET",
-            "auth": True
-        },
 
-    }
-    host = "https://api.bybit.com"
     recv_window = 5000
 
     def sign_request(self, request, sign=True):
